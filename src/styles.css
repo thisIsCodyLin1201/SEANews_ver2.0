@@ -1599,20 +1599,40 @@ body {
 
 .doc-preview-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   margin-top: 8px;
   padding: 10px 12px;
   background: rgba(255, 255, 255, 0.6);
   border-radius: 10px;
   border: 1px solid rgba(34, 49, 70, 0.08);
+  flex-wrap: wrap;
 }
 
 .doc-preview-name {
   flex: 1;
+  min-width: 200px;
   font-weight: 600;
   font-size: 14px;
   color: var(--ink);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.doc-preview-name:hover {
+  color: #1f4b6e;
+}
+
+.doc-preview-name.expanded {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .doc-preview-meta {
@@ -1635,6 +1655,8 @@ body {
   border-radius: 12px;
   padding: 16px;
   overflow-y: auto;
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 .doc-preview-image {
@@ -1653,7 +1675,8 @@ body {
   line-height: 1.6;
   color: var(--ink-soft);
   white-space: pre-wrap;
-  word-break: break-word;
+  word-break: normal;
+  overflow-wrap: anywhere;
   margin: 0;
 }
 

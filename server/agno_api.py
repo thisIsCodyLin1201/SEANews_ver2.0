@@ -505,9 +505,52 @@ def build_research_document(
     if not combined:
         return None
 
-    title_hint = (last_user or "Research").strip().replace("\n", " ")
-    title_hint = title_hint[:28] + "..." if len(title_hint) > 28 else title_hint
-    name = f"Deep Research - {title_hint or 'Research'}"
+    # 使用 LLM 生成簡短標題
+    try:
+        summarize_prompt = f"""請為以下搜尋結果生成一個簡短的標題（15-25個中文字），直接概括主要內容，不要包含「Deep Research」等前綴。
+
+用戶查詢：{last_user}
+
+搜尋結果預覽：
+{combined[:500]}
+
+要求：
+- 直接描述內容主題，例如：「越南、泰國、印尼銀行數位化趨勢分析」
+- 包含關鍵國家/地區名稱
+- 突出核心主題
+- 15-25個中文字
+- 不要markdown格式，只輸出標題文字"""
+
+        from agno import Agent
+        title_agent = Agent(
+            name="Title Generator",
+            model=get_model(),
+            markdown=False,
+        )
+        
+        title_response = title_agent.run(summarize_prompt)
+        generated_title = title_response.content.strip() if title_response and title_response.content else ""
+        
+        # 移除可能的引號或markdown格式
+        generated_title = generated_title.replace('"', '').replace("'", '').replace('`', '').replace('#', '').strip()
+        
+        # 確保標題長度合理
+        if len(generated_title) > 50:
+            generated_title = generated_title[:47] + "..."
+        elif len(generated_title) < 5:
+            # 如果生成失敗，使用原有邏輯
+            title_hint = (last_user or "Research").strip().replace("\n", " ")
+            title_hint = title_hint[:28] + "..." if len(title_hint) > 28 else title_hint
+            generated_title = title_hint or "新聞搜尋結果"
+        
+        name = generated_title
+        print(f"✅ 生成標題: {name}")
+        
+    except Exception as e:
+        print(f"⚠️ 標題生成失敗，使用預設邏輯: {e}")
+        title_hint = (last_user or "新聞搜尋結果").strip().replace("\n", " ")
+        name = title_hint
+    
     doc_id = str(uuid.uuid4())
 
     rag_store.index_inline_text(doc_id, name, combined, "RESEARCH")

@@ -107,13 +107,6 @@ const emptyTranslation = {
   clauses: initialTranslationPairs,
 };
 
-const artifactTabs = [
-  { id: 'documents', label: '文件', icon: FolderOpen },
-  { id: 'summary', label: '摘要', icon: FileText },
-  { id: 'translation', label: '翻譯', icon: Languages },
-  { id: 'memo', label: 'Credit Memo', icon: ClipboardCheck },
-];
-
 // 預設標籤分類
 const workflowTags = ['待處理', '處理中', '已完成', '需補件', '已歸檔'];
 const functionTags = ['摘要', '翻譯', '納入報告', '風險掃描', '背景資料'];
@@ -163,6 +156,7 @@ export default function App() {
   const [editingDocId, setEditingDocId] = useState(''); // For tag editing
   const [customTags, setCustomTags] = useState([]); // User-created tags
   const [newTagInput, setNewTagInput] = useState('');
+  const [titleExpanded, setTitleExpanded] = useState(false); // For title expand/collapse
   const [routingSteps, setRoutingSteps] = useState(initialRoutingSteps);
   const [messages, setMessages] = useState(initialMessages);
   const [composerText, setComposerText] = useState('');
@@ -190,6 +184,29 @@ export default function App() {
   });
 
   const [activeTranslationIndex, setActiveTranslationIndex] = useState(0);
+
+  // 從 localStorage 載入對話記錄
+  useEffect(() => {
+    try {
+      const savedMessages = localStorage.getItem('newsAlertMessages');
+      if (savedMessages) {
+        setMessages(JSON.parse(savedMessages));
+      }
+    } catch (error) {
+      console.warn('載入對話記錄失敗:', error);
+    }
+  }, []);
+
+  // 保存對話記錄到 localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      try {
+        localStorage.setItem('newsAlertMessages', JSON.stringify(messages));
+      } catch (error) {
+        console.warn('保存對話記錄失敗:', error);
+      }
+    }
+  }, [messages]);
 
   // 從數據庫載入新聞記錄
   useEffect(() => {
@@ -321,6 +338,11 @@ export default function App() {
     loadTags();
     return () => { isMounted = false; };
   }, []);
+
+  // Reset title expansion when document changes
+  useEffect(() => {
+    setTitleExpanded(false);
+  }, [selectedDocId]);
 
   // Ensure activeTranslationIndex is within bounds for selected document
   useEffect(() => {
@@ -546,6 +568,7 @@ export default function App() {
       }
     }
     setMessages([]);
+    localStorage.removeItem('newsAlertMessages'); // 清除保存的對話記錄
     setRoutingSteps([]);
     setArtifacts({
       summaries: [],
@@ -639,7 +662,7 @@ export default function App() {
     const userMessage = {
       id: createId(),
       role: 'user',
-      name: 'RM',
+      name: 'User',
       time: nowTime(),
       content: trimmed,
     };
@@ -1004,21 +1027,9 @@ export default function App() {
             </div>
             <div>
               <Text as="h1" weight="700" className="brand-title">
-                Credit Memo 工作台
-              </Text>
-              <Text type="secondary" className="brand-subtitle">
-                企業金融 RM 授信報告工作流程
+                新聞輿情系統
               </Text>
             </div>
-          </div>
-
-          <div className="header-actions">
-            <Button variant="outlined" icon={Briefcase} onClick={handleNewCase}>
-              新增案件
-            </Button>
-            <Button type="primary" icon={FolderPlus} onClick={handleExportPackage}>
-              匯出資料包
-            </Button>
           </div>
         </header>
 
@@ -1031,17 +1042,6 @@ export default function App() {
                 </Text>
               </div>
               <div className="panel-actions" style={{ gap: '8px' }}>
-                <Button icon={Upload} variant="outlined" onClick={handleUploadClick}>
-                  上傳文件
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="file-input"
-                  accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.gif"
-                  onChange={handleUploadFiles}
-                />
               </div>
             </div>
 
@@ -1198,7 +1198,7 @@ export default function App() {
                   })}
                 </div>
               ) : (
-                <div className="doc-empty">尚未上傳文件，支援 PDF / TXT</div>
+                <div className="doc-empty">尚無新聞記錄，請透過新聞檢索功能搜尋新聞</div>
               )}
             </div>
 
@@ -1208,7 +1208,7 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <Text as="h2" weight="600" className="panel-title">
-                  解析作業區
+                  內容閱覽區
                 </Text>
               </div>
               <div className="panel-actions">
@@ -1217,22 +1217,7 @@ export default function App() {
                     匯出報告
                   </Button>
                 ) : null}
-                <ActionIcon icon={Download} variant="outlined" onClick={handleDownloadOutput} title="下載 Markdown" />
               </div>
-            </div>
-
-            <div className="tab-bar">
-              {artifactTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={`tab-button${activeTab === tab.id ? ' is-active' : ''}`}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  <Icon icon={tab.icon} size="small" />
-                  <span>{tab.label}</span>
-                </button>
-              ))}
             </div>
 
             <div className="artifact-stack">
@@ -1257,7 +1242,13 @@ export default function App() {
                           <>
                             <div className="doc-preview-header">
                               <Icon icon={FileText} size="small" />
-                              <span className="doc-preview-name">{selectedDoc.name}</span>
+                              <span 
+                                className={`doc-preview-name${titleExpanded ? ' expanded' : ''}`}
+                                onClick={() => setTitleExpanded(!titleExpanded)}
+                                title={titleExpanded ? '點擊收縮' : '點擊展開完整標題'}
+                              >
+                                {selectedDoc.name}
+                              </span>
                               <Tag size="small" color="blue">{selectedDoc.type}</Tag>
                               <span className="doc-preview-meta">{selectedDoc.pages} 頁</span>
                             </div>
@@ -1358,15 +1349,12 @@ export default function App() {
             <div className="panel-header">
               <div>
                 <Text as="h2" weight="600" className="panel-title">
-                  RM 對話
+                  新聞檢索
                 </Text>
               </div>
               <div className="panel-actions">
                 <Tag size="small" variant="borderless">
                   案件: {caseId}
-                </Tag>
-                <Tag size="small" variant="borderless">
-                  SLA: {calculateSlaRemaining(caseStartTime, slaMinutes)}
                 </Tag>
               </div>
             </div>
@@ -1381,7 +1369,7 @@ export default function App() {
                   style={{ '--delay': `${index * 120}ms` }}
                 >
                   <div className="message-avatar">
-                    {message.role === 'user' ? 'RM' : 'AI'}
+                    {message.role === 'user' ? 'User' : 'AI'}
                   </div>
                   <div className="message-bubble">
                     <div className="message-meta">
@@ -1448,15 +1436,12 @@ export default function App() {
                     handleSend();
                   }
                 }}
-                placeholder="輸入指示，例如：請翻譯條款書第 3-6 條，並更新風險摘要"
+                placeholder="輸入新聞檢索指示，例如：請提供越南、泰國、印尼的銀行數位化相關新聞"
               />
               {errorMessage ? <div className="error-banner">{errorMessage}</div> : null}
               <div className="composer-actions">
-                <Button icon={Paperclip} variant="outlined" onClick={handleUploadClick}>
-                  上傳文件
-                </Button>
                 <Button icon={ArrowUpRight} type="primary" onClick={handleSend} disabled={isLoading}>
-                  {isLoading ? '產生中...' : '送出指示'}
+                  {isLoading ? '檢索中...' : '送出指示'}
                 </Button>
               </div>
             </div>
