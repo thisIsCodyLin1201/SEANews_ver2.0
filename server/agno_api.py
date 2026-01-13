@@ -1242,8 +1242,10 @@ app = FastAPI(title="Agno Artifacts API", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 SSE_HEADERS = {
@@ -1275,8 +1277,26 @@ def preload_sample_pdfs() -> None:
 
 @app.on_event("startup")
 async def startup_event():
-    """應用啟動時預加載示例 PDF"""
+    """應用啟動時的初始化任務"""
+    # 預加載示例 PDF
     preload_sample_pdfs()
+    
+    # 配置靜態文件服務（必須在所有 API 路由之後）
+    dist_path = Path(__file__).parent.parent / "dist"
+    if dist_path.exists() and dist_path.is_dir():
+        try:
+            # 檢查 API 路由數量
+            api_routes = [r for r in app.routes if hasattr(r, 'path') and r.path.startswith('/api')]
+            print(f"✅ 檢測到 {len(api_routes)} 個 API 路由")
+            
+            # 使用 StaticFiles 的 html=True 參數處理 SPA
+            app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="static")
+            print(f"✅ 靜態文件服務已啟用 (html=True): {dist_path}")
+        except Exception as e:
+            print(f"⚠️  掛載靜態文件失敗: {e}")
+    else:
+        print("⚠️  警告: dist 目錄不存在，靜態文件服務未啟用")
+        print("   生產環境請先運行: npm run build")
 
 
 @app.post("/api/auth/login")
@@ -2037,65 +2057,6 @@ async def save_news_record(record: Dict[str, Any]):
 
 
 # ============ 静态文件服务配置（生产环境） ============
-# 重要：必须在所有 API 路由定义之后
-# 使用 startup 事件确保不干扰 API 路由
-
-@app.on_event("startup")
-async def setup_static_files():
-    """在应用启动时配置静态文件服务"""
-    dist_path = Path(__file__).parent.parent / "dist"
-    
-    if not dist_path.exists() or not dist_path.is_dir():
-        print("⚠️  警告: dist 目录不存在，静态文件服务未启用")
-        print("   生产环境请先运行: npm run build")
-        return
-    
-    # 检查是否有 /api 路由（确保 API 优先）
-    api_routes = [route for route in app.routes if hasattr(route, 'path') and route.path.startswith('/api')]
-    print(f"✅ 检测到 {len(api_routes)} 个 API 路由")
-    
-    # 挂载静态资源目录
-    assets_path = dist_path / "assets"
-    if assets_path.exists():
-        try:
-            app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
-            print(f"✅ 静态资源已挂载: /assets")
-        except Exception as e:
-            print(f"⚠️  挂载 assets 失败: {e}")
-    
-    print(f"✅ 静态文件服务已启用: {dist_path}")
-
-
-# 提供根路径的 index.html（必须在 API 路由之后定义）
-@app.get("/", include_in_schema=False)
-async def serve_root():
-    """返回前端入口文件（仅当 dist 存在时）"""
-    dist_path = Path(__file__).parent.parent / "dist"
-    index_file = dist_path / "index.html"
-    
-    if index_file.exists():
-        return FileResponse(index_file)
-    
-    return {"message": "Frontend not built. Run 'npm run build' first."}
-
-
-# SPA 路由支持 - 捕获 404 错误返回 index.html
-# 但必须排除 API 路径
-@app.middleware("http")
-async def spa_middleware(request, call_next):
-    """
-    SPA 路由中间件
-    - API 请求正常处理
-    - 其他 404 请求返回 index.html（前端路由）
-    """
-    response = await call_next(request)
-    
-    # 如果是 404 且不是 API 请求，返回 index.html
-    if response.status_code == 404 and not request.url.path.startswith("/api"):
-        dist_path = Path(__file__).parent.parent / "dist"
-        index_file = dist_path / "index.html"
-        
-        if index_file.exists():
-            return FileResponse(index_file)
-    
-    return response
+# 注意：靜態文件服務在 startup_event() 中配置
+# 這樣可以確保在所有 API 路由定義之後才掛載
+# 使用 StaticFiles 的 html=True 參數避免 405 錯誤
