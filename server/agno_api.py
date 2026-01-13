@@ -2036,37 +2036,66 @@ async def save_news_record(record: Dict[str, Any]):
         )
 
 
-# 静态文件服务（生产环境）- 必须放在所有 API 路由之后
-# 使用精确的路由避免与 API 冲突
-dist_path = Path(__file__).parent.parent / "dist"
-if dist_path.exists() and dist_path.is_dir():
-    # 挂载 /assets 路径到静态资源
+# ============ 静态文件服务配置（生产环境） ============
+# 重要：必须在所有 API 路由定义之后
+# 使用 startup 事件确保不干扰 API 路由
+
+@app.on_event("startup")
+async def setup_static_files():
+    """在应用启动时配置静态文件服务"""
+    dist_path = Path(__file__).parent.parent / "dist"
+    
+    if not dist_path.exists() or not dist_path.is_dir():
+        print("⚠️  警告: dist 目录不存在，静态文件服务未启用")
+        print("   生产环境请先运行: npm run build")
+        return
+    
+    # 检查是否有 /api 路由（确保 API 优先）
+    api_routes = [route for route in app.routes if hasattr(route, 'path') and route.path.startswith('/api')]
+    print(f"✅ 检测到 {len(api_routes)} 个 API 路由")
+    
+    # 挂载静态资源目录
     assets_path = dist_path / "assets"
     if assets_path.exists():
-        app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
-    
-    # 根路径返回 index.html
-    @app.get("/", response_class=FileResponse)
-    async def root():
-        return FileResponse(str(dist_path / "index.html"))
-    
-    # 捕获所有其他 GET 请求（非 API）返回 index.html（SPA 支持）
-    # 注意：这个必须是最后一个路由
-    from starlette.exceptions import HTTPException as StarletteHTTPException
-    
-    @app.exception_handler(StarletteHTTPException)
-    async def custom_http_exception_handler(request, exc):
-        # 如果是 404 且不是 API 请求，返回 index.html（SPA 路由）
-        if exc.status_code == 404 and not request.url.path.startswith("/api"):
-            return FileResponse(str(dist_path / "index.html"))
-        # 否则返回正常的错误
-        from fastapi.responses import JSONResponse
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"detail": exc.detail}
-        )
+        try:
+            app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+            print(f"✅ 静态资源已挂载: /assets")
+        except Exception as e:
+            print(f"⚠️  挂载 assets 失败: {e}")
     
     print(f"✅ 静态文件服务已启用: {dist_path}")
-else:
-    print("⚠️  警告: dist 目录不存在，静态文件服务未启用")
-    print("   生产环境请先运行: npm run build")
+
+
+# 提供根路径的 index.html（必须在 API 路由之后定义）
+@app.get("/", include_in_schema=False)
+async def serve_root():
+    """返回前端入口文件（仅当 dist 存在时）"""
+    dist_path = Path(__file__).parent.parent / "dist"
+    index_file = dist_path / "index.html"
+    
+    if index_file.exists():
+        return FileResponse(index_file)
+    
+    return {"message": "Frontend not built. Run 'npm run build' first."}
+
+
+# SPA 路由支持 - 捕获 404 错误返回 index.html
+# 但必须排除 API 路径
+@app.middleware("http")
+async def spa_middleware(request, call_next):
+    """
+    SPA 路由中间件
+    - API 请求正常处理
+    - 其他 404 请求返回 index.html（前端路由）
+    """
+    response = await call_next(request)
+    
+    # 如果是 404 且不是 API 请求，返回 index.html
+    if response.status_code == 404 and not request.url.path.startswith("/api"):
+        dist_path = Path(__file__).parent.parent / "dist"
+        index_file = dist_path / "index.html"
+        
+        if index_file.exists():
+            return FileResponse(index_file)
+    
+    return response
