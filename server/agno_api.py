@@ -13,7 +13,8 @@ from typing import Any, Dict, Iterator, List, Optional, Union, Literal
 import dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from agno.agent import Agent
@@ -2033,3 +2034,35 @@ async def save_news_record(record: Dict[str, Any]):
             status_code=500,
             content={"success": False, "error": f"保存記錄失敗: {str(e)}"}
         )
+
+
+# 静态文件服务（生产环境）- 必须放在所有 API 路由之后
+# 检查 dist 目录是否存在（前端构建后的文件）
+dist_path = Path(__file__).parent.parent / "dist"
+if dist_path.exists() and dist_path.is_dir():
+    # 挂载静态文件
+    app.mount("/assets", StaticFiles(directory=str(dist_path / "assets")), name="assets")
+    
+    # 处理 SPA 路由 - 所有非 API 请求返回 index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        """
+        服务前端 SPA 应用
+        - API 请求已被前面的路由处理
+        - 其他请求返回 index.html（支持前端路由）
+        """
+        # 如果请求的是静态文件且存在，返回该文件
+        file_path = dist_path / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        
+        # 否则返回 index.html（SPA 入口）
+        index_path = dist_path / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        
+        # 如果 index.html 不存在，返回 404
+        raise HTTPException(status_code=404, detail="Frontend not built")
+else:
+    print("⚠️  警告: dist 目录不存在，静态文件服务未启用")
+    print("   生产环境请先运行: npm run build")
