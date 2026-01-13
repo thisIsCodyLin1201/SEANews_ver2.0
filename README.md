@@ -83,6 +83,50 @@ npm run build
 npm run preview
 ```
 
+## 🐳 Docker 部署
+
+### 使用 Docker Compose（推薦）
+
+```bash
+# 啟動應用
+docker-compose up -d
+
+# 查看日誌
+docker-compose logs -f
+
+# 停止應用
+docker-compose down
+```
+
+### 使用 Dockerfile
+
+```bash
+# 構建鏡像
+docker build -t seanews-app:latest .
+
+# 運行容器
+docker run -d \
+  --name seanews \
+  -p 8787:8787 \
+  --env-file .env \
+  seanews-app:latest
+```
+
+### 自動化測試
+
+**Windows:**
+```bash
+docker-test.bat
+```
+
+**Linux/Mac:**
+```bash
+chmod +x docker-test.sh
+./docker-test.sh
+```
+
+詳細部署說明請查看 [DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md)
+
 ## 截圖
 以下為介面截圖（檔案：`授信Artifacts工作台畫面.png`）：
 

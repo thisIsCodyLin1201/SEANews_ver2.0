@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      # 從 .env 文件載入環境變量
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - APP_USERNAME=${APP_USERNAME:-CathaySEA}
+      - APP_PASSWORD=${APP_PASSWORD:-CathaySEA}
+      - PORT=8787
+    volumes:
+      # 掛載 exports 目錄（用於保存導出的文件）
+      - ./server/exports:/app/server/exports
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
