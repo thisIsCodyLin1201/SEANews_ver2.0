@@ -2037,12 +2037,35 @@ async def save_news_record(record: Dict[str, Any]):
 
 
 # 静态文件服务（生产环境）- 必须放在所有 API 路由之后
-# 检查 dist 目录是否存在（前端构建后的文件）
+# 使用精确的路由避免与 API 冲突
 dist_path = Path(__file__).parent.parent / "dist"
 if dist_path.exists() and dist_path.is_dir():
-    # 方案：使用 StaticFiles 挂载整个 dist 目录
-    # 这样可以避免通配路由导致的 405 错误
-    app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="static")
+    # 挂载 /assets 路径到静态资源
+    assets_path = dist_path / "assets"
+    if assets_path.exists():
+        app.mount("/assets", StaticFiles(directory=str(assets_path)), name="assets")
+    
+    # 根路径返回 index.html
+    @app.get("/", response_class=FileResponse)
+    async def root():
+        return FileResponse(str(dist_path / "index.html"))
+    
+    # 捕获所有其他 GET 请求（非 API）返回 index.html（SPA 支持）
+    # 注意：这个必须是最后一个路由
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    
+    @app.exception_handler(StarletteHTTPException)
+    async def custom_http_exception_handler(request, exc):
+        # 如果是 404 且不是 API 请求，返回 index.html（SPA 路由）
+        if exc.status_code == 404 and not request.url.path.startswith("/api"):
+            return FileResponse(str(dist_path / "index.html"))
+        # 否则返回正常的错误
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    
     print(f"✅ 静态文件服务已启用: {dist_path}")
 else:
     print("⚠️  警告: dist 目录不存在，静态文件服务未启用")
