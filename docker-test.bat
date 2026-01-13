@@ -6,6 +6,18 @@ echo SEA News Docker 構建和測試
 echo ================================
 echo.
 
+REM 檢查 Docker 是否運行
+echo [前置檢查] 檢測 Docker Desktop...
+docker info >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Docker Desktop 未運行
+    echo 請啟動 Docker Desktop 後再試
+    pause
+    exit /b 1
+)
+echo [OK] Docker 正在運行
+echo.
+
 REM 檢查 .env 文件
 if not exist .env (
     echo [WARNING] .env 文件不存在
@@ -32,8 +44,8 @@ echo.
 
 REM 2. 停止並移除舊容器
 echo [步驟 2] 清理舊容器...
-docker stop seanews 2>nul
-docker rm seanews 2>nul
+docker stop seanews 2>NUL
+docker rm seanews 2>NUL
 echo [OK] 清理完成
 echo.
 

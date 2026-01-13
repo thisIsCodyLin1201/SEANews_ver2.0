@@ -12,8 +12,8 @@ WORKDIR /app
 # 複製 package.json 和 package-lock.json
 COPY package*.json ./
 
-# 安裝前端依賴
-RUN npm ci --only=production
+# 安裝前端依賴（包含 devDependencies，因為需要 Vite 等構建工具）
+RUN npm ci
 
 # 複製前端源碼
 COPY src ./src
