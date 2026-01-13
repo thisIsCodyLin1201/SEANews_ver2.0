@@ -1012,13 +1012,13 @@ def map_event_to_trace_event(event: Any) -> Optional[Dict[str, Any]]:
             return {
                 "type": "tool_call",
                 "tool": "web_search",
-                "message": f"🔍 搜尋中: {query}",
+                "message": f"[SEARCH] 搜尋中: {query}",
                 "args": tool_args,
             }
         return {
             "type": "tool_call",
             "tool": tool_name,
-            "message": f"⚙️ 調用工具: {tool_name}",
+            "message": f"[TOOL] 調用工具: {tool_name}",
         }
     
     # 捕捉工具調用結果
@@ -1028,7 +1028,7 @@ def map_event_to_trace_event(event: Any) -> Optional[Dict[str, Any]]:
             return {
                 "type": "tool_result",
                 "tool": "web_search",
-                "message": "✅ 搜尋完成",
+                "message": "[OK] 搜尋完成",
             }
     
     # 捕捉代理委派事件
@@ -1036,7 +1036,7 @@ def map_event_to_trace_event(event: Any) -> Optional[Dict[str, Any]]:
         agent_name = getattr(event, "agent_name", "Agent")
         return {
             "type": "delegation",
-            "message": f"📤 委派給: {agent_name}",
+            "message": f"[DELEGATE] 委派給: {agent_name}",
         }
     
     return None
@@ -1127,8 +1127,8 @@ def build_research_agent() -> Agent:
             "你是東南亞新聞搜尋專員，負責使用 web_search 工具搜尋東南亞各國新聞。",
             "",
             "【核心規則 - 必須遵守】",
-            "⚠️ 每次搜尋都必須使用 site: 語法限定信任網域，絕對不可省略！",
-            "⚠️ 搜尋查詢格式：<關鍵字> <site語法> <時間限制>",
+            "[WARNING] 每次搜尋都必須使用 site: 語法限定信任網域，絕對不可省略！",
+            "[WARNING] 搜尋查詢格式：<關鍵字> <site語法> <時間限制>",
             "",
             "【信任網域查詢模板 - 直接複製使用】",
             query_templates,
@@ -1287,15 +1287,15 @@ async def startup_event():
         try:
             # 檢查 API 路由數量
             api_routes = [r for r in app.routes if hasattr(r, 'path') and r.path.startswith('/api')]
-            print(f"✅ 檢測到 {len(api_routes)} 個 API 路由")
+            print(f"[OK] 檢測到 {len(api_routes)} 個 API 路由")
             
             # 使用 StaticFiles 的 html=True 參數處理 SPA
             app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="static")
-            print(f"✅ 靜態文件服務已啟用 (html=True): {dist_path}")
+            print(f"[OK] 靜態文件服務已啟用 (html=True): {dist_path}")
         except Exception as e:
-            print(f"⚠️  掛載靜態文件失敗: {e}")
+            print(f"[WARN] 掛載靜態文件失敗: {e}")
     else:
-        print("⚠️  警告: dist 目錄不存在，靜態文件服務未啟用")
+        print("[WARN] 警告: dist 目錄不存在，靜態文件服務未啟用")
         print("   生產環境請先運行: npm run build")
 
 
@@ -1791,8 +1791,8 @@ async def export_and_send_news(req: ExportNewsRequest):
         output_dir = base_dir / "exports"
         output_dir.mkdir(exist_ok=True)
         
-        print(f"📁 輸出目錄: {output_dir}")
-        print(f"📄 文件名稱: {req.document_name}")
+        print(f"[INFO] 輸出目錄: {output_dir}")
+        print(f"[INFO] 文件名稱: {req.document_name}")
         print(f"📝 內容長度: {len(req.document_content)} 字元")
         
         # 生成 Excel 檔案（傳入文件內容進行解析）
@@ -1803,7 +1803,7 @@ async def export_and_send_news(req: ExportNewsRequest):
         )
         
         if not excel_result.get("success"):
-            print(f"❌ Excel 生成失敗: {excel_result.get('error')}")
+            print(f"[ERROR] Excel 生成失敗: {excel_result.get('error')}")
             return JSONResponse(
                 status_code=500,
                 content={"success": False, "error": excel_result.get("error", "生成 Excel 失敗")}
@@ -1813,8 +1813,8 @@ async def export_and_send_news(req: ExportNewsRequest):
         filename = excel_result["filename"]
         news_items = excel_result.get("news_items", [])
         
-        print(f"✅ Excel 已生成: {filepath}")
-        print(f"📊 新聞數量: {len(news_items)}")
+        print(f"[OK] Excel 已生成: {filepath}")
+        print(f"[INFO] 新聞數量: {len(news_items)}")
         print(f"📂 檔案存在: {os.path.exists(filepath)}")
         print(f"📦 檔案大小: {os.path.getsize(filepath) if os.path.exists(filepath) else 0} bytes")
         
@@ -1914,7 +1914,7 @@ async def export_and_send_news_batch(req: BatchExportNewsRequest):
         output_dir = base_dir / "exports"
         output_dir.mkdir(exist_ok=True)
         
-        print(f"📁 輸出目錄: {output_dir}")
+        print(f"[INFO] 輸出目錄: {output_dir}")
         print(f"📦 文件數量: {len(req.documents)}")
         print(f"📝 文件列表: {[doc.get('name', '未命名') for doc in req.documents]}")
         
@@ -1925,7 +1925,7 @@ async def export_and_send_news_batch(req: BatchExportNewsRequest):
         )
         
         if not excel_result.get("success"):
-            print(f"❌ Excel 批次生成失敗: {excel_result.get('error')}")
+            print(f"[ERROR] Excel 批次生成失敗: {excel_result.get('error')}")
             return JSONResponse(
                 status_code=500,
                 content={"success": False, "error": excel_result.get("error", "批次生成 Excel 失敗")}
@@ -1935,8 +1935,8 @@ async def export_and_send_news_batch(req: BatchExportNewsRequest):
         filename = excel_result["filename"]
         news_items = excel_result.get("news_items", [])
         
-        print(f"✅ Excel 已生成: {filepath}")
-        print(f"📊 新聞總數: {len(news_items)}")
+        print(f"[OK] Excel 已生成: {filepath}")
+        print(f"[INFO] 新聞總數: {len(news_items)}")
         print(f"📂 檔案存在: {os.path.exists(filepath)}")
         print(f"📦 檔案大小: {os.path.getsize(filepath) if os.path.exists(filepath) else 0} bytes")
         

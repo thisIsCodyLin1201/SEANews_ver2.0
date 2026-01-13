@@ -82,7 +82,7 @@ def extract_country_from_name(name: str) -> str:
         國家名稱（中文）
     """
     if not name:
-        return "未知"
+        return " "
         
     name_lower = name.lower()
     
@@ -106,7 +106,7 @@ def extract_country_from_name(name: str) -> str:
                 return country
     
     # 如果沒有匹配到，返回未知
-    return "未知"
+    return " "
 
 
 def translate_title_to_chinese(title: str) -> str:
@@ -352,7 +352,7 @@ def generate_news_excel(
                 if record.get('name') == document_name:
                     country = record.get('country', '')
                     # 如果是'未知'也視為空
-                    if country == '未知':
+                    if country == ' ':
                         country = ''
                     break
         except Exception as e:
@@ -365,7 +365,7 @@ def generate_news_excel(
                     if record.get('name') == document_name:
                         tags = record.get('tags', [])
                         if tags and len(tags) > 0:
-                            country = tags[0] if tags[0] != '未知' else ''
+                            country = tags[0] if tags[0] != ' ' else ''
                         break
             except Exception as e:
                 print(f"⚠️ 從 tags 獲取國家失敗: {e}")
