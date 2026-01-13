@@ -19,7 +19,6 @@ RUN npm ci
 COPY src ./src
 COPY index.html ./
 COPY vite.config.js ./
-COPY public ./public
 
 # 構建前端靜態文件
 RUN npm run build
