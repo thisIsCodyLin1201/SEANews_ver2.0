@@ -198,7 +198,10 @@ FROM python:3.11-slim
 
 **錯誤：** `npm ci` 或 `pip install` 失敗
 
-**解決：**
+**原因：** Dockerfile 使用了 `npm ci --only=production`，跳過了 Vite 等構建工具（在 devDependencies 中）
+
+**解決：** 已修復為 `npm ci`（安裝所有依賴）
+
 ```bash
 # 清理 Docker 緩存
 docker builder prune -a
@@ -206,6 +209,12 @@ docker builder prune -a
 # 重新構建
 docker-compose build --no-cache
 ```
+
+### 問題 1-1: Docker Desktop 未運行
+
+**錯誤：** `error during connect: ... dockerDesktopLinuxEngine ...`
+
+**解決：** 啟動 Docker Desktop 後重試
 
 ### 問題 2: 無法訪問 API
 

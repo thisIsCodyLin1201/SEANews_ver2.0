@@ -12,6 +12,12 @@ Zeabur 使用 **Caddy 靜態伺服器** 部署，只能提供靜態文件（HTML
 
 ## 🐳 Docker 快速部署
 
+### 前置要求
+
+✅ **Docker Desktop 已安裝並運行**
+- Windows/Mac: 啟動 Docker Desktop
+- Linux: 確保 Docker daemon 運行
+
 ### 方案 1: Docker Compose（最簡單）
 
 ```bash
