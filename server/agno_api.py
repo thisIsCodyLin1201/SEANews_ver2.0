@@ -25,7 +25,8 @@ from agno.team import Team
 from agno.models.openai import OpenAIChat
 from agno.models.openai.responses import OpenAIResponses
 
-from rag_store import RagStore
+# Lazy import for RagStore to avoid startup failures
+# from rag_store import RagStore
 from tag_store import get_doc_tags, load_tag_store, set_custom_tags, set_doc_tags
 from email_service import send_email_with_attachment, generate_news_report_html
 from excel_service import (
@@ -149,7 +150,60 @@ RAG_AGENT_INSTRUCTIONS = [
     "若找不到相關內容，請明確回覆『未找到相關段落』。",
 ]
 
-rag_store = RagStore()
+# Lazy initialization to avoid startup errors if dependencies are missing
+_rag_store = None
+
+def get_rag_store():
+    """
+    Lazy initialization of RagStore to prevent startup failures.
+    Returns a dummy object if initialization fails (e.g., missing pypdf or OPENAI_API_KEY).
+    """
+    global _rag_store
+    if _rag_store is None:
+        try:
+            # Lazy import to avoid import-time errors
+            from rag_store import RagStore
+            _rag_store = RagStore()
+            print("✓ RagStore initialized successfully")
+        except Exception as e:
+            print(f"⚠ Warning: RagStore initialization failed: {e}")
+            print("  RAG features will be disabled. App will continue without RAG support.")
+            # Return a dummy object that prevents crashes
+            class DummyRagStore:
+                docs = {}
+                def index_inline_text(self, *args, **kwargs): 
+                    return None
+                def index_pdf_bytes(self, *args, **kwargs): 
+                    return type('obj', (object,), {
+                        'id': str(__import__('uuid').uuid4()),
+                        'name': args[1] if len(args) > 1 else 'unknown',
+                        'type': 'PDF',
+                        'pages': None,
+                        'preview': '',
+                        'chunks': [],
+                        'content_hash': None,
+                        'status': 'disabled',
+                        'message': 'RAG disabled'
+                    })()
+                def index_text_bytes(self, *args, **kwargs): 
+                    return self.index_pdf_bytes(*args, **kwargs)
+                def register_stub(self, name, type_, message): 
+                    return type('obj', (object,), {
+                        'id': str(__import__('uuid').uuid4()),
+                        'name': name,
+                        'type': type_,
+                        'pages': None,
+                        'preview': message,
+                        'chunks': [],
+                        'content_hash': None,
+                        'status': 'stub',
+                        'message': message
+                    })()
+                def search(self, *args, **kwargs): 
+                    return []
+            _rag_store = DummyRagStore()
+    return _rag_store
+
 
 
 class Message(BaseModel):
@@ -365,7 +419,7 @@ def build_doc_context(documents: List[Document], selected_doc_id: Optional[str] 
         content = (doc.content or "").strip()
         tags = "、".join(doc.tags or []) if doc.tags else "無"
         pages = doc.pages if doc.pages not in (None, "") else "-"
-        stored = rag_store.docs.get(doc.id or "") if doc.id else None
+        stored = get_rag_store().docs.get(doc.id or "") if doc.id else None
         if not content and stored and stored.preview:
             content = f"PDF 已索引（可 RAG 檢索）。預覽：{stored.preview}"
         if doc.image:
@@ -442,7 +496,7 @@ def run_ocr_for_documents(documents: List[Document]) -> List[Dict[str, Any]]:
             if not text:
                 continue
             doc.content = text
-            rag_store.index_inline_text(doc.id, doc.name or doc.id, text, doc.type or "IMAGE")
+            get_rag_store().index_inline_text(doc.id, doc.name or doc.id, text, doc.type or "IMAGE")
             updates.append(
                 {
                     "id": doc.id,
@@ -620,7 +674,7 @@ def build_research_document(
     name = f"Deep Research - {title_hint or 'Research'}"
     doc_id = str(uuid.uuid4())
 
-    rag_store.index_inline_text(doc_id, name, combined, "RESEARCH")
+    get_rag_store().index_inline_text(doc_id, name, combined, "RESEARCH")
 
     # 創建文件記錄
     document_record = {
@@ -683,7 +737,7 @@ def build_news_documents(
         country = extract_country_from_content(full_content, fallback_name=title)
         
         # 索引到 RAG（使用翻譯後的標題）
-        rag_store.index_inline_text(doc_id, title, full_content, "NEWS")
+        get_rag_store().index_inline_text(doc_id, title, full_content, "NEWS")
         
         # 創建文件記錄（使用翻譯後的標題）
         document_record = {
@@ -1012,13 +1066,13 @@ def map_event_to_trace_event(event: Any) -> Optional[Dict[str, Any]]:
             return {
                 "type": "tool_call",
                 "tool": "web_search",
-                "message": f"🔍 搜尋中: {query}",
+                "message": f"[SEARCH] 搜尋中: {query}",
                 "args": tool_args,
             }
         return {
             "type": "tool_call",
             "tool": tool_name,
-            "message": f"⚙️ 調用工具: {tool_name}",
+            "message": f"[TOOL] 調用工具: {tool_name}",
         }
     
     # 捕捉工具調用結果
@@ -1028,7 +1082,7 @@ def map_event_to_trace_event(event: Any) -> Optional[Dict[str, Any]]:
             return {
                 "type": "tool_result",
                 "tool": "web_search",
-                "message": "✅ 搜尋完成",
+                "message": "[OK] 搜尋完成",
             }
     
     # 捕捉代理委派事件
@@ -1036,7 +1090,7 @@ def map_event_to_trace_event(event: Any) -> Optional[Dict[str, Any]]:
         agent_name = getattr(event, "agent_name", "Agent")
         return {
             "type": "delegation",
-            "message": f"📤 委派給: {agent_name}",
+            "message": f"[DELEGATE] 委派給: {agent_name}",
         }
     
     return None
@@ -1064,7 +1118,7 @@ def ensure_inline_documents_indexed(documents: List[Document]) -> None:
         if not doc.id:
             doc.id = str(uuid.uuid4())
         name = doc.name or doc.id
-        rag_store.index_inline_text(doc.id, name, content, doc.type or "TEXT")
+        get_rag_store().index_inline_text(doc.id, name, content, doc.type or "TEXT")
 
 
 def build_rag_agent(doc_ids: List[str], model: OpenAIChat) -> Agent:
@@ -1082,7 +1136,7 @@ def build_rag_agent(doc_ids: List[str], model: OpenAIChat) -> Agent:
             ids = dependencies.get("doc_ids")
         if not ids:
             ids = doc_ids
-        return rag_store.search(query, doc_ids=ids, top_k=num_documents or 5)
+        return get_rag_store().search(query, doc_ids=ids, top_k=num_documents or 5)
 
     return Agent(
         name="RAG Agent",
@@ -1127,8 +1181,8 @@ def build_research_agent() -> Agent:
             "你是東南亞新聞搜尋專員，負責使用 web_search 工具搜尋東南亞各國新聞。",
             "",
             "【核心規則 - 必須遵守】",
-            "⚠️ 每次搜尋都必須使用 site: 語法限定信任網域，絕對不可省略！",
-            "⚠️ 搜尋查詢格式：<關鍵字> <site語法> <時間限制>",
+            "[WARNING] 每次搜尋都必須使用 site: 語法限定信任網域，絕對不可省略！",
+            "[WARNING] 搜尋查詢格式：<關鍵字> <site語法> <時間限制>",
             "",
             "【信任網域查詢模板 - 直接複製使用】",
             query_templates,
@@ -1269,7 +1323,7 @@ def preload_sample_pdfs() -> None:
         try:
             with open(filepath, "rb") as f:
                 data = f.read()
-            rag_store.index_pdf_bytes(data, filename)
+            get_rag_store().index_pdf_bytes(data, filename)
             print(f"✓ 預加載 PDF: {filename}")
         except Exception as exc:
             print(f"✗ 預加載 PDF 失敗 {filename}: {exc}")
@@ -1287,15 +1341,15 @@ async def startup_event():
         try:
             # 檢查 API 路由數量
             api_routes = [r for r in app.routes if hasattr(r, 'path') and r.path.startswith('/api')]
-            print(f"✅ 檢測到 {len(api_routes)} 個 API 路由")
+            print(f"[OK] 檢測到 {len(api_routes)} 個 API 路由")
             
             # 使用 StaticFiles 的 html=True 參數處理 SPA
             app.mount("/", StaticFiles(directory=str(dist_path), html=True), name="static")
-            print(f"✅ 靜態文件服務已啟用 (html=True): {dist_path}")
+            print(f"[OK] 靜態文件服務已啟用 (html=True): {dist_path}")
         except Exception as e:
-            print(f"⚠️  掛載靜態文件失敗: {e}")
+            print(f"[WARN] 掛載靜態文件失敗: {e}")
     else:
-        print("⚠️  警告: dist 目錄不存在，靜態文件服務未啟用")
+        print("[WARN] 警告: dist 目錄不存在，靜態文件服務未啟用")
         print("   生產環境請先運行: npm run build")
 
 
@@ -1376,7 +1430,7 @@ async def update_tags(req: TagUpdateRequest):
 async def get_preloaded_documents():
     """獲取預加載的文檔列表"""
     documents = []
-    for doc_id, stored in rag_store.docs.items():
+    for doc_id, stored in get_rag_store().docs.items():
         tag_key = stored.content_hash or stored.id
         documents.append(
             {
@@ -1409,9 +1463,9 @@ async def upload_documents(files: List[UploadFile] = File(...)):
 
         try:
             if ext == ".pdf":
-                stored = rag_store.index_pdf_bytes(data, filename)
+                stored = get_rag_store().index_pdf_bytes(data, filename)
             elif ext in {".txt", ".md", ".csv"}:
-                stored = rag_store.index_text_bytes(data, filename)
+                stored = get_rag_store().index_text_bytes(data, filename)
             elif ext in IMAGE_EXTENSIONS:
                 doc_id = str(uuid.uuid4())
                 mime_type, _ = guess_type(filename)
@@ -1434,9 +1488,9 @@ async def upload_documents(files: List[UploadFile] = File(...)):
                 )
                 continue
             else:
-                stored = rag_store.register_stub(filename, ext.upper().lstrip(".") or "FILE", "尚未支援此格式")
+                stored = get_rag_store().register_stub(filename, ext.upper().lstrip(".") or "FILE", "尚未支援此格式")
         except Exception as exc:
-            stored = rag_store.register_stub(filename, ext.upper().lstrip(".") or "FILE", str(exc))
+            stored = get_rag_store().register_stub(filename, ext.upper().lstrip(".") or "FILE", str(exc))
 
         results.append(
             {
@@ -1466,7 +1520,7 @@ async def get_preloaded_documents():
         try:
             data = file_path.read_bytes()
             tag_key = compute_tag_key(data)
-            stored = rag_store.index_pdf_bytes(data, file_path.name)
+            stored = get_rag_store().index_pdf_bytes(data, file_path.name)
             results.append(
                 {
                     "id": stored.id,
@@ -1791,8 +1845,8 @@ async def export_and_send_news(req: ExportNewsRequest):
         output_dir = base_dir / "exports"
         output_dir.mkdir(exist_ok=True)
         
-        print(f"📁 輸出目錄: {output_dir}")
-        print(f"📄 文件名稱: {req.document_name}")
+        print(f"[INFO] 輸出目錄: {output_dir}")
+        print(f"[INFO] 文件名稱: {req.document_name}")
         print(f"📝 內容長度: {len(req.document_content)} 字元")
         
         # 生成 Excel 檔案（傳入文件內容進行解析）
@@ -1803,7 +1857,7 @@ async def export_and_send_news(req: ExportNewsRequest):
         )
         
         if not excel_result.get("success"):
-            print(f"❌ Excel 生成失敗: {excel_result.get('error')}")
+            print(f"[ERROR] Excel 生成失敗: {excel_result.get('error')}")
             return JSONResponse(
                 status_code=500,
                 content={"success": False, "error": excel_result.get("error", "生成 Excel 失敗")}
@@ -1813,8 +1867,8 @@ async def export_and_send_news(req: ExportNewsRequest):
         filename = excel_result["filename"]
         news_items = excel_result.get("news_items", [])
         
-        print(f"✅ Excel 已生成: {filepath}")
-        print(f"📊 新聞數量: {len(news_items)}")
+        print(f"[OK] Excel 已生成: {filepath}")
+        print(f"[INFO] 新聞數量: {len(news_items)}")
         print(f"📂 檔案存在: {os.path.exists(filepath)}")
         print(f"📦 檔案大小: {os.path.getsize(filepath) if os.path.exists(filepath) else 0} bytes")
         
@@ -1914,7 +1968,7 @@ async def export_and_send_news_batch(req: BatchExportNewsRequest):
         output_dir = base_dir / "exports"
         output_dir.mkdir(exist_ok=True)
         
-        print(f"📁 輸出目錄: {output_dir}")
+        print(f"[INFO] 輸出目錄: {output_dir}")
         print(f"📦 文件數量: {len(req.documents)}")
         print(f"📝 文件列表: {[doc.get('name', '未命名') for doc in req.documents]}")
         
@@ -1925,7 +1979,7 @@ async def export_and_send_news_batch(req: BatchExportNewsRequest):
         )
         
         if not excel_result.get("success"):
-            print(f"❌ Excel 批次生成失敗: {excel_result.get('error')}")
+            print(f"[ERROR] Excel 批次生成失敗: {excel_result.get('error')}")
             return JSONResponse(
                 status_code=500,
                 content={"success": False, "error": excel_result.get("error", "批次生成 Excel 失敗")}
@@ -1935,8 +1989,8 @@ async def export_and_send_news_batch(req: BatchExportNewsRequest):
         filename = excel_result["filename"]
         news_items = excel_result.get("news_items", [])
         
-        print(f"✅ Excel 已生成: {filepath}")
-        print(f"📊 新聞總數: {len(news_items)}")
+        print(f"[OK] Excel 已生成: {filepath}")
+        print(f"[INFO] 新聞總數: {len(news_items)}")
         print(f"📂 檔案存在: {os.path.exists(filepath)}")
         print(f"📦 檔案大小: {os.path.getsize(filepath) if os.path.exists(filepath) else 0} bytes")
         

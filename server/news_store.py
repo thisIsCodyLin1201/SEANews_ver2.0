@@ -47,7 +47,7 @@ class NewsStore:
         
         conn.commit()
         conn.close()
-        print(f"✅ 新聞資料庫已初始化: {self.db_path}")
+        print(f"[OK] 新聞資料庫已初始化: {self.db_path}")
     
     def add_record(self, record: Dict[str, Any]) -> bool:
         """
@@ -89,11 +89,11 @@ class NewsStore:
             conn.commit()
             conn.close()
             
-            print(f"✅ 新增新聞記錄: {record.get('name')}")
+            print(f"[OK] 新增新聞記錄: {record.get('name')}")
             return True
             
         except Exception as e:
-            print(f"❌ 新增新聞記錄失敗: {e}")
+            print(f"[ERROR] 新增新聞記錄失敗: {e}")
             return False
     
     def get_all_records(self) -> List[Dict[str, Any]]:
@@ -129,7 +129,7 @@ class NewsStore:
             return records
             
         except Exception as e:
-            print(f"❌ 獲取新聞記錄失敗: {e}")
+            print(f"[ERROR] 獲取新聞記錄失敗: {e}")
             return []
     
     def get_record_by_id(self, record_id: str) -> Optional[Dict[str, Any]]:
@@ -165,7 +165,7 @@ class NewsStore:
             return None
             
         except Exception as e:
-            print(f"❌ 獲取新聞記錄失敗: {e}")
+            print(f"[ERROR] 獲取新聞記錄失敗: {e}")
             return None
     
     def update_tags(self, record_id: str, tags: List[str]) -> bool:
@@ -194,11 +194,11 @@ class NewsStore:
             conn.commit()
             conn.close()
             
-            print(f"✅ 更新標籤: {record_id}")
+            print(f"[OK] 更新標籤: {record_id}")
             return True
             
         except Exception as e:
-            print(f"❌ 更新標籤失敗: {e}")
+            print(f"[ERROR] 更新標籤失敗: {e}")
             return False
     
     def delete_record(self, record_id: str) -> bool:
@@ -224,14 +224,14 @@ class NewsStore:
             conn.close()
             
             if affected > 0:
-                print(f"✅ 刪除新聞記錄: {record_id}")
+                print(f"[OK] 刪除新聞記錄: {record_id}")
                 return True
             else:
-                print(f"⚠️ 記錄不存在: {record_id}")
+                print(f"[WARN] 記錄不存在: {record_id}")
                 return False
             
         except Exception as e:
-            print(f"❌ 刪除新聞記錄失敗: {e}")
+            print(f"[ERROR] 刪除新聞記錄失敗: {e}")
             return False
     
     def clear_all_records(self) -> bool:
@@ -251,11 +251,11 @@ class NewsStore:
             affected = cursor.rowcount
             conn.close()
             
-            print(f"✅ 已清空 {affected} 筆新聞記錄")
+            print(f"[OK] 已清空 {affected} 筆新聞記錄")
             return True
             
         except Exception as e:
-            print(f"❌ 清空新聞記錄失敗: {e}")
+            print(f"[ERROR] 清空新聞記錄失敗: {e}")
             return False
 
 
