@@ -55,6 +55,9 @@ COPY --from=frontend-builder /app/dist ./dist
 # 創建必要的目錄
 RUN mkdir -p server/exports
 
+# 切換到 server 目錄作為工作目錄
+WORKDIR /app/server
+
 # 暴露端口
 EXPOSE 8787
 
@@ -66,6 +69,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 ENV PORT=8787
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+# 將 server 目錄加入 Python 路徑，讓本地模組可以被導入
+ENV PYTHONPATH=/app/server
 
-# 啟動命令（使用更穩健的配置）
-CMD ["python", "-m", "uvicorn", "server.agno_api:app", "--host", "0.0.0.0", "--port", "8787", "--log-level", "info"]
+# 啟動命令（在 server 目錄下執行，使用相對模組導入）
+CMD ["python", "-m", "uvicorn", "agno_api:app", "--host", "0.0.0.0", "--port", "8787", "--log-level", "info"]
