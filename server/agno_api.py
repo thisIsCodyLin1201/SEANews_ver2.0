@@ -25,7 +25,8 @@ from agno.team import Team
 from agno.models.openai import OpenAIChat
 from agno.models.openai.responses import OpenAIResponses
 
-from rag_store import RagStore
+# Lazy import for RagStore to avoid startup failures
+# from rag_store import RagStore
 from tag_store import get_doc_tags, load_tag_store, set_custom_tags, set_doc_tags
 from email_service import send_email_with_attachment, generate_news_report_html
 from excel_service import (
@@ -149,7 +150,60 @@ RAG_AGENT_INSTRUCTIONS = [
     "若找不到相關內容，請明確回覆『未找到相關段落』。",
 ]
 
-rag_store = RagStore()
+# Lazy initialization to avoid startup errors if dependencies are missing
+_rag_store = None
+
+def get_rag_store():
+    """
+    Lazy initialization of RagStore to prevent startup failures.
+    Returns a dummy object if initialization fails (e.g., missing pypdf or OPENAI_API_KEY).
+    """
+    global _rag_store
+    if _rag_store is None:
+        try:
+            # Lazy import to avoid import-time errors
+            from rag_store import RagStore
+            _rag_store = RagStore()
+            print("✓ RagStore initialized successfully")
+        except Exception as e:
+            print(f"⚠ Warning: RagStore initialization failed: {e}")
+            print("  RAG features will be disabled. App will continue without RAG support.")
+            # Return a dummy object that prevents crashes
+            class DummyRagStore:
+                docs = {}
+                def index_inline_text(self, *args, **kwargs): 
+                    return None
+                def index_pdf_bytes(self, *args, **kwargs): 
+                    return type('obj', (object,), {
+                        'id': str(__import__('uuid').uuid4()),
+                        'name': args[1] if len(args) > 1 else 'unknown',
+                        'type': 'PDF',
+                        'pages': None,
+                        'preview': '',
+                        'chunks': [],
+                        'content_hash': None,
+                        'status': 'disabled',
+                        'message': 'RAG disabled'
+                    })()
+                def index_text_bytes(self, *args, **kwargs): 
+                    return self.index_pdf_bytes(*args, **kwargs)
+                def register_stub(self, name, type_, message): 
+                    return type('obj', (object,), {
+                        'id': str(__import__('uuid').uuid4()),
+                        'name': name,
+                        'type': type_,
+                        'pages': None,
+                        'preview': message,
+                        'chunks': [],
+                        'content_hash': None,
+                        'status': 'stub',
+                        'message': message
+                    })()
+                def search(self, *args, **kwargs): 
+                    return []
+            _rag_store = DummyRagStore()
+    return _rag_store
+
 
 
 class Message(BaseModel):
@@ -365,7 +419,7 @@ def build_doc_context(documents: List[Document], selected_doc_id: Optional[str] 
         content = (doc.content or "").strip()
         tags = "、".join(doc.tags or []) if doc.tags else "無"
         pages = doc.pages if doc.pages not in (None, "") else "-"
-        stored = rag_store.docs.get(doc.id or "") if doc.id else None
+        stored = get_rag_store().docs.get(doc.id or "") if doc.id else None
         if not content and stored and stored.preview:
             content = f"PDF 已索引（可 RAG 檢索）。預覽：{stored.preview}"
         if doc.image:
@@ -442,7 +496,7 @@ def run_ocr_for_documents(documents: List[Document]) -> List[Dict[str, Any]]:
             if not text:
                 continue
             doc.content = text
-            rag_store.index_inline_text(doc.id, doc.name or doc.id, text, doc.type or "IMAGE")
+            get_rag_store().index_inline_text(doc.id, doc.name or doc.id, text, doc.type or "IMAGE")
             updates.append(
                 {
                     "id": doc.id,
@@ -620,7 +674,7 @@ def build_research_document(
     name = f"Deep Research - {title_hint or 'Research'}"
     doc_id = str(uuid.uuid4())
 
-    rag_store.index_inline_text(doc_id, name, combined, "RESEARCH")
+    get_rag_store().index_inline_text(doc_id, name, combined, "RESEARCH")
 
     # 創建文件記錄
     document_record = {
@@ -683,7 +737,7 @@ def build_news_documents(
         country = extract_country_from_content(full_content, fallback_name=title)
         
         # 索引到 RAG（使用翻譯後的標題）
-        rag_store.index_inline_text(doc_id, title, full_content, "NEWS")
+        get_rag_store().index_inline_text(doc_id, title, full_content, "NEWS")
         
         # 創建文件記錄（使用翻譯後的標題）
         document_record = {
@@ -1064,7 +1118,7 @@ def ensure_inline_documents_indexed(documents: List[Document]) -> None:
         if not doc.id:
             doc.id = str(uuid.uuid4())
         name = doc.name or doc.id
-        rag_store.index_inline_text(doc.id, name, content, doc.type or "TEXT")
+        get_rag_store().index_inline_text(doc.id, name, content, doc.type or "TEXT")
 
 
 def build_rag_agent(doc_ids: List[str], model: OpenAIChat) -> Agent:
@@ -1082,7 +1136,7 @@ def build_rag_agent(doc_ids: List[str], model: OpenAIChat) -> Agent:
             ids = dependencies.get("doc_ids")
         if not ids:
             ids = doc_ids
-        return rag_store.search(query, doc_ids=ids, top_k=num_documents or 5)
+        return get_rag_store().search(query, doc_ids=ids, top_k=num_documents or 5)
 
     return Agent(
         name="RAG Agent",
@@ -1269,7 +1323,7 @@ def preload_sample_pdfs() -> None:
         try:
             with open(filepath, "rb") as f:
                 data = f.read()
-            rag_store.index_pdf_bytes(data, filename)
+            get_rag_store().index_pdf_bytes(data, filename)
             print(f"✓ 預加載 PDF: {filename}")
         except Exception as exc:
             print(f"✗ 預加載 PDF 失敗 {filename}: {exc}")
@@ -1376,7 +1430,7 @@ async def update_tags(req: TagUpdateRequest):
 async def get_preloaded_documents():
     """獲取預加載的文檔列表"""
     documents = []
-    for doc_id, stored in rag_store.docs.items():
+    for doc_id, stored in get_rag_store().docs.items():
         tag_key = stored.content_hash or stored.id
         documents.append(
             {
@@ -1409,9 +1463,9 @@ async def upload_documents(files: List[UploadFile] = File(...)):
 
         try:
             if ext == ".pdf":
-                stored = rag_store.index_pdf_bytes(data, filename)
+                stored = get_rag_store().index_pdf_bytes(data, filename)
             elif ext in {".txt", ".md", ".csv"}:
-                stored = rag_store.index_text_bytes(data, filename)
+                stored = get_rag_store().index_text_bytes(data, filename)
             elif ext in IMAGE_EXTENSIONS:
                 doc_id = str(uuid.uuid4())
                 mime_type, _ = guess_type(filename)
@@ -1434,9 +1488,9 @@ async def upload_documents(files: List[UploadFile] = File(...)):
                 )
                 continue
             else:
-                stored = rag_store.register_stub(filename, ext.upper().lstrip(".") or "FILE", "尚未支援此格式")
+                stored = get_rag_store().register_stub(filename, ext.upper().lstrip(".") or "FILE", "尚未支援此格式")
         except Exception as exc:
-            stored = rag_store.register_stub(filename, ext.upper().lstrip(".") or "FILE", str(exc))
+            stored = get_rag_store().register_stub(filename, ext.upper().lstrip(".") or "FILE", str(exc))
 
         results.append(
             {
@@ -1466,7 +1520,7 @@ async def get_preloaded_documents():
         try:
             data = file_path.read_bytes()
             tag_key = compute_tag_key(data)
-            stored = rag_store.index_pdf_bytes(data, file_path.name)
+            stored = get_rag_store().index_pdf_bytes(data, file_path.name)
             results.append(
                 {
                     "id": stored.id,
