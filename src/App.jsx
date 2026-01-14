@@ -37,10 +37,10 @@ import remarkGfm from 'remark-gfm';
 const createId = () => Math.random().toString(36).slice(2, 10);
 
 // 智能 API 地址检测：
-// - 开发环境：使用 VITE_API_URL (http://localhost:8787)
+// - 开发环境：使用空字符串通過 Vite proxy 轉發到後端
 // - 生产环境：使用空字符串（相对路径，与前端同域名）
 const apiBase = import.meta.env.DEV 
-  ? (import.meta.env.VITE_API_URL || 'http://localhost:8787').replace(/\/$/, '')
+  ? ''
   : '';
 
 const nowTime = () =>
