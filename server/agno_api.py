@@ -51,6 +51,18 @@ def _safe_load_env() -> None:
 
 _safe_load_env()
 
+# === 啟動診斷日誌 ===
+print("=" * 60)
+print("[啟動] SEANews 應用正在初始化...")
+print(f"[環境] Python 路徑: {os.getcwd()}")
+print(f"[環境] PYTHONPATH: {os.getenv('PYTHONPATH', 'NOT SET')}")
+print(f"[環境] PORT: {os.getenv('PORT', 'NOT SET')}")
+print(f"[環境] OPENAI_API_KEY: {'已設置 ✓' if os.getenv('OPENAI_API_KEY') else '未設置 ✗ (將導致啟動失敗!)'}")
+print(f"[環境] OPENAI_MODEL: {os.getenv('OPENAI_MODEL', 'NOT SET')}")
+print(f"[環境] APP_USERNAME: {'已設置 ✓' if os.getenv('APP_USERNAME') else '未設置 ✗'}")
+print(f"[環境] APP_SECRET_KEY: {'已設置 ✓' if os.getenv('APP_SECRET_KEY') else '未設置 ✗'}")
+print("=" * 60)
+
 # 信任的東南亞新聞來源
 TRUSTED_NEWS_SOURCES = [
     {"name": "VietJo", "domain": "viet-jo.com", "region": "Vietnam"},
