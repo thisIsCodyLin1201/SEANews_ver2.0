@@ -85,7 +85,9 @@ npm run preview
 
 ## 🐳 Docker 部署
 
-### 使用 Docker Compose（推薦）
+### 本地 Docker 部署
+
+#### 使用 Docker Compose（推薦）
 
 ```bash
 # 啟動應用
@@ -98,7 +100,7 @@ docker-compose logs -f
 docker-compose down
 ```
 
-### 使用 Dockerfile
+#### 使用 Dockerfile
 
 ```bash
 # 構建鏡像
@@ -112,7 +114,7 @@ docker run -d \
   seanews-app:latest
 ```
 
-### 自動化測試
+#### 自動化測試
 
 **Windows:**
 ```bash
@@ -126,6 +128,63 @@ chmod +x docker-test.sh
 ```
 
 詳細部署說明請查看 [DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md)
+
+### ☁️ Zeabur 雲端部署（推薦）
+
+[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates)
+
+Zeabur 提供一鍵部署、自動 CI/CD、按量計費的雲端平台。
+
+#### 快速部署步驟
+
+1. **推送代碼到 GitHub**
+   ```bash
+   git push origin main
+   ```
+
+2. **在 Zeabur 創建項目**
+   - 訪問 [Zeabur Dashboard](https://zeabur.com/dashboard)
+   - 點擊 "Create Project"
+   - 選擇 "Deploy your source code"
+   - 連接此 GitHub 倉庫
+
+3. **配置環境變量**
+   在 Zeabur Dashboard 中添加：
+   ```env
+   OPENAI_API_KEY=your-api-key
+   OPENAI_MODEL=gpt-5.2-2025-12-11
+   APP_USERNAME=CathaySEA
+   APP_PASSWORD=your-secure-password
+   APP_SECRET_KEY=your-secret-key
+   ```
+   
+   **注意**：不要設置 `PORT`，Zeabur 會自動管理
+
+4. **部署完成**
+   - Zeabur 自動構建並部署
+   - 獲得自動生成的 HTTPS 域名
+   - 支持自定義域名
+
+#### Zeabur 優勢
+- ✅ 自動 CI/CD（Git push 即部署）
+- ✅ 按量計費（只為實際使用付費）
+- ✅ 自動 HTTPS 證書
+- ✅ 全球 CDN 加速
+- ✅ 環境變量 Web 管理
+- ✅ 實時日誌和監控
+- ✅ 一鍵回滾
+
+#### 本地測試 Zeabur Dockerfile
+```bash
+# Windows
+test-zeabur-dockerfile.bat
+
+# Linux/Mac
+chmod +x test-zeabur-dockerfile.sh
+./test-zeabur-dockerfile.sh
+```
+
+📖 **完整 Zeabur 部署指南**：[ZEABUR_DEPLOYMENT.md](./ZEABUR_DEPLOYMENT.md)
 
 ## 截圖
 以下為介面截圖（檔案：`授信Artifacts工作台畫面.png`）：
