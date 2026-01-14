@@ -57,6 +57,10 @@ echo [5/6] 等待服務啟動（10秒）...
 timeout /t 10 /nobreak >nul
 echo.
 
+echo [5.5/6] 測試 Python 模組導入...
+docker exec seanews-zeabur-test python test_imports.py
+echo.
+
 echo [6/6] 測試 API 健康檢查...
 curl http://localhost:%TEST_PORT%/api/health
 echo.

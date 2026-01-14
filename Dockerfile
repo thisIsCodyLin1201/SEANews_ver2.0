@@ -88,4 +88,5 @@ ENV PORT=8000
 # 啟動命令
 # 使用 sh -c 以支持環境變量展開
 # Zeabur 會自動使用 PORT 環境變量
-CMD sh -c "python -m uvicorn agno_api:app --host 0.0.0.0 --port ${PORT} --log-level info"
+# 確保當前目錄在 Python 路徑中
+CMD sh -c "export PYTHONPATH=/app/server:\$PYTHONPATH && cd /app/server && python -m uvicorn agno_api:app --host 0.0.0.0 --port ${PORT} --log-level info"
