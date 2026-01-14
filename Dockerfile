@@ -69,15 +69,11 @@ ENV PYTHONUNBUFFERED=1 \
 # 設置工作目錄為 server（這樣 agno_api.py 可以直接導入同級模組）
 WORKDIR /app/server
 
-# Zeabur 會自動設置 PORT，這裡提供默認值
-ENV PORT=8000
-
-# 暴露端口
-EXPOSE 8000
-
-# 健康檢查
+# Zeabur 會自動設置 PORT 環境變量，無需手動指定
+# 健康檢查使用默認端口 8080（Zeabur 會在運行時覆蓋）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/api/health || exit 1
 
-# 啟動命令 - 使用 exec 格式並通過 sh 展開環境變量
-CMD ["sh", "-c", "python -m uvicorn agno_api:app --host 0.0.0.0 --port ${PORT} --log-level info"]
+# 啟動命令 - 使用 ${PORT:-8080} 確保有默認值
+# Zeabur 會自動注入 PORT 環境變量，如果沒有則使用 8080
+CMD ["sh", "-c", "python -m uvicorn agno_api:app --host 0.0.0.0 --port ${PORT:-8080} --log-level info"]
