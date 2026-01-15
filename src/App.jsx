@@ -62,12 +62,10 @@ const initialDocs = [];
 
 // 預定義的任務階段
 const predefinedStages = [
-  { id: 'init', label: '初始化', order: 1 },
-  { id: 'analyze', label: '分析需求', order: 2 },
-  { id: 'search', label: '搜尋資料', order: 3 },
-  { id: 'process', label: '處理內容', order: 4 },
-  { id: 'generate', label: '生成結果', order: 5 },
-  { id: 'complete', label: '完成', order: 6 },
+  { id: 'analyze', label: '需求分析', order: 1 },
+  { id: 'search', label: '搜尋資料', order: 2 },
+  { id: 'process', label: '處理內容', order: 3 },
+  { id: 'complete', label: '完成', order: 4 },
 ];
 
 const initialRoutingSteps = [];
@@ -865,7 +863,7 @@ export default function App() {
     setErrorMessage('');
     setStreamingContent('');
     setRoutingSteps([]);
-    setCurrentStage('init'); // 開始時設為初始化階段
+    setCurrentStage('analyze'); // 送出指示後立即顯示需求分析階段
     setCompletedStages([]);
     setReasoningSummary('');
 
@@ -904,48 +902,48 @@ export default function App() {
       const contentType = response.headers.get('content-type') || '';
       let data = null;
       let hasRoutingUpdates = false;
-
+      
       const applyRoutingUpdate = (update) => {
         if (!update || !update.id) return;
+        
+        console.log('🔄 [路由處理] 應用更新:', update);
+        
         setRoutingSteps((prev) => {
           const index = prev.findIndex((step) => step.id === update.id);
           if (index >= 0) {
             const next = [...prev];
             next[index] = { ...next[index], ...update };
+            console.log('✏️ [路由處理] 更新現有步驟:', next[index]);
             return next;
           }
+          console.log('➕ [路由處理] 新增步驟:', update);
           return [...prev, update];
         });
         
-        // 根據任務狀態更新階段
-        const label = (update.label || '').toLowerCase();
+        // 根據後端提供的 stage 標記更新階段
+        const stage = update.stage;
+        const status = update.status || '';
         
-        if (update.status === 'running') {
-          // 根據 label 推測當前階段
-          if (label.includes('模型生成')) {
+        console.log(`📊 [階段判斷] stage: "${stage}", status: "${status}"`);
+        
+        // 使用後端明確標記的階段
+        if (stage) {
+          if (stage === 'analyze' && status === 'running') {
+            console.log('🎯 [階段追蹤] ✅ 需求分析階段 (TeamRunStarted)');
             setCurrentStage('analyze');
-            setCompletedStages(['init']);
-          } else if (label.includes('網路查詢') || label.includes('搜尋') || label.includes('web') || label.includes('search')) {
+            setCompletedStages([]);
+          } else if (stage === 'search' && status === 'running') {
+            console.log('🎯 [階段追蹤] ✅ 搜尋資料階段 (TeamRunContent)');
             setCurrentStage('search');
-            setCompletedStages(['init', 'analyze']);
-          } else if (label.includes('文件檢索') || label.includes('knowledge') || label.includes('檢索')) {
+            setCompletedStages(['analyze']);
+          } else if (stage === 'process') {
+            console.log('🎯 [階段追蹤] ✅ 處理內容階段 (TeamRunContentCompleted)');
             setCurrentStage('process');
-            setCompletedStages(['init', 'analyze', 'search']);
-          }
-        } else if (update.status === 'done') {
-          // 任務完成時的處理
-          if (label.includes('模型生成')) {
-            // 模型生成完成，進入生成階段
-            setCurrentStage('generate');
-            setCompletedStages(['init', 'analyze', 'search', 'process']);
-          } else if (label.includes('網路查詢') || label.includes('搜尋') || label.includes('web') || label.includes('search')) {
-            // 搜尋完成，進入處理階段
-            setCurrentStage('process');
-            setCompletedStages((prev) => [...new Set([...prev, 'init', 'analyze', 'search'])]);
-          } else if (label.includes('文件檢索') || label.includes('knowledge') || label.includes('檢索')) {
-            // 檢索完成，進入生成階段
-            setCurrentStage('generate');
-            setCompletedStages((prev) => [...new Set([...prev, 'init', 'analyze', 'search', 'process'])]);
+            setCompletedStages(['analyze', 'search']);
+          } else if (stage === 'complete' && status === 'done') {
+            console.log('🎯 [階段追蹤] ✅ 完成階段 (TeamRunCompleted)');
+            setCurrentStage('complete');
+            setCompletedStages(['analyze', 'search', 'process']);
           }
         }
       };
@@ -985,6 +983,7 @@ export default function App() {
 
               if (parsed.routing_update) {
                 hasRoutingUpdates = true;
+                console.log('📍 [即時路由] 收到更新:', parsed.routing_update);
                 applyRoutingUpdate(parsed.routing_update);
                 continue;
               }
@@ -998,7 +997,7 @@ export default function App() {
               if (parsed.done) {
                 // 任務完成，標記所有階段為完成
                 setCurrentStage('complete');
-                setCompletedStages(['init', 'analyze', 'search', 'process', 'generate', 'complete']);
+                setCompletedStages(['analyze', 'search', 'process', 'complete']);
                 continue;
               }
 
