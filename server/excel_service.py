@@ -48,7 +48,7 @@ def extract_country_from_content(content: str, fallback_name: str = "") -> str:
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
-            max_tokens=20
+            max_completion_tokens=20
         )
         
         country = response.choices[0].message.content.strip()
@@ -144,7 +144,7 @@ def translate_title_to_chinese(title: str) -> str:
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
-            max_tokens=100
+            max_completion_tokens=100
         )
         
         translated = response.choices[0].message.content.strip()
@@ -187,7 +187,9 @@ def parse_news_from_content(content: str) -> List[Dict[str, str]]:
         
         # 提取標題（第一行，去掉 # 符號）
         if lines:
-            news_item['title'] = lines[0].replace('#', '').strip()
+            original_title = lines[0].replace('#', '').strip()
+            # 翻譯標題為繁體中文
+            news_item['title'] = translate_title_to_chinese(original_title)
         
         # 提取發布時間
         date_pattern = r'\*\*發布時間\*\*[：:]\s*(\d{4}[-/年]\d{1,2}[-/月]\d{1,2}[日]?)'
@@ -258,7 +260,9 @@ def parse_news_from_content(content: str) -> List[Dict[str, str]]:
         # 提取標題（第一行）
         lines = section.split('\n')
         if lines:
-            news_item['title'] = lines[0].strip()
+            original_title = lines[0].strip()
+            # 翻譯標題為繁體中文
+            news_item['title'] = translate_title_to_chinese(original_title)
         
         # 提取發布時間
         date_pattern = r'發布時間[：:]\s*(\d{4}[-/年]\d{1,2}[-/月]\d{1,2}[日]?)'

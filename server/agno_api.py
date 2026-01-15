@@ -849,6 +849,32 @@ def run_smalltalk_agent(
         return "你好！我是東南亞新聞情報助理，可以協助新聞檢索、情報分析與摘要。請告訴我需要什麼協助？"
 
 
+def quick_route_check(messages: List[Message]) -> Optional[str]:
+    """快速關鍵詞檢查，避免不必要的 LLM 路由判斷"""
+    if not messages:
+        return None
+    
+    last_msg = get_last_user_message(messages)
+    if not last_msg:
+        return None
+    
+    msg_lower = last_msg.lower()
+    
+    # 明確的任務關鍵詞 → 直接走 full 模式
+    task_keywords = ['新聞', '搜尋', '查詢', '找', '分析', '摘要', '翻譯', '報告', '最近', '國家', '產業', '經濟']
+    if any(keyword in msg_lower for keyword in task_keywords):
+        print(f"⚡ [快速路由] 檢測到任務關鍵詞，直接使用 full 模式")
+        return "full"
+    
+    # 簡單問候 → simple 模式
+    greetings = ['你好', 'hi', 'hello', '嗨', '早安', '午安', '晚安', '謝謝', 'thanks', '感謝']
+    if any(greeting in msg_lower for greeting in greetings) and len(msg_lower) < 20:
+        print(f"⚡ [快速路由] 檢測到問候語，使用 simple 模式")
+        return "simple"
+    
+    return None
+
+
 def run_router_agent(
     messages: List[Message],
     documents: List[Document],
@@ -856,7 +882,30 @@ def run_router_agent(
 ) -> Optional[RouteDecision]:
     if not messages:
         return None
+    
+    # 快速路由檢查
+    quick_mode = quick_route_check(messages)
+    if quick_mode == "full":
+        # 直接返回 full 模式，跳過 LLM 調用
+        return RouteDecision(
+            mode="full",
+            needs_web_search=True,
+            needs_rag=False,
+            needs_vision=False,
+            reason="任務關鍵詞檢測"
+        )
+    elif quick_mode == "simple":
+        return RouteDecision(
+            mode="simple",
+            needs_web_search=False,
+            needs_rag=False,
+            needs_vision=False,
+            reason="問候語檢測"
+        )
+    
+    # 無法快速判斷，使用 LLM 路由
     try:
+        print(f"🤔 [LLM路由] 使用模型判斷路由")
         router = build_router_agent(documents, system_context)
         convo = build_conversation(messages)
         prompt = f"{convo}\n\n請判斷路由並輸出 JSON。"
@@ -869,7 +918,8 @@ def run_router_agent(
         text = resp.get_content_as_string()
         if text:
             return RouteDecision.model_validate_json(text)
-    except Exception:
+    except Exception as e:
+        print(f"❌ [路由錯誤] {e}")
         return None
     return None
 
@@ -946,16 +996,34 @@ def format_tool_label(tool_name: Optional[str]) -> str:
 
 def build_routing_update(event: Any, routing_state: Dict[str, str]) -> Optional[Dict[str, str]]:
     event_name = getattr(event, "event", "") or ""
+    
+    # 添加詳細日誌以便調試
+    print(f"🔍 [路由事件] {event_name}")
+
+    # TeamRunContent 或 RunContent 事件 → 搜尋資料階段
+    if event_name in {"TeamRunContent", "RunContent"}:
+        step_id = "content-generation"
+        routing_state.setdefault(step_id, step_id)
+        print(f"✅ [路由更新] 開始生成內容 → 搜尋資料階段")
+        return {"id": step_id, "label": "內容生成", "status": "running", "eta": "進行中", "stage": "search"}
+
+    # TeamRunContentCompleted 或 RunContentCompleted 或 TeamRunCompleted 或 RunCompleted → 處理內容階段（藍色 running）
+    # 這些事件表示 AI 生成完成，但後端還在處理（解析新聞、儲存到資料庫等）
+    if event_name in {"TeamRunContentCompleted", "RunContentCompleted", "TeamRunCompleted", "RunCompleted"}:
+        step_id = "content-processing"
+        routing_state.setdefault(step_id, step_id)
+        print(f"✅ [路由更新] {event_name} → 處理內容階段（藍色，正在儲存新聞）")
+        return {"id": step_id, "label": "處理內容", "status": "running", "eta": "進行中", "stage": "process"}
 
     if event_name in {TeamRunEvent.run_started.value, RunEvent.run_started.value}:
         step_id = "run-main"
         routing_state.setdefault(step_id, step_id)
-        return {"id": step_id, "label": "模型生成", "status": "running", "eta": "進行中"}
+        print(f"✅ [路由更新] 模型生成開始")
+        return {"id": step_id, "label": "模型生成", "status": "running", "eta": "進行中", "stage": "analyze"}
 
-    if event_name in {TeamRunEvent.run_completed.value, RunEvent.run_completed.value}:
-        step_id = "run-main"
-        routing_state.setdefault(step_id, step_id)
-        return {"id": step_id, "label": "模型生成", "status": "done", "eta": ""}
+    # run_completed 已經在上面的 Completed 事件中處理，這裡移除重複處理
+    # if event_name in {TeamRunEvent.run_completed.value, RunEvent.run_completed.value}:
+    #     已經在上面統一處理為「處理內容」階段
 
     if event_name in {TeamRunEvent.run_error.value, RunEvent.run_error.value}:
         step_id = "run-main"
@@ -964,28 +1032,33 @@ def build_routing_update(event: Any, routing_state: Dict[str, str]) -> Optional[
 
     if event_name in {TeamRunEvent.tool_call_started.value, RunEvent.tool_call_started.value}:
         tool = getattr(event, "tool", None)
+        tool_name = getattr(tool, "tool_name", None)
         tool_key = getattr(tool, "tool_call_id", None)
         if not tool_key:
-            tool_name = getattr(tool, "tool_name", None) or "tool"
-            tool_key = f"{tool_name}-{getattr(tool, 'created_at', '')}"
+            tool_key = f"{tool_name or 'tool'}-{getattr(tool, 'created_at', '')}"
         routing_state.setdefault(tool_key, tool_key)
+        label = format_tool_label(tool_name)
+        print(f"✅ [路由更新] 工具調用開始: {label}")
         return {
             "id": routing_state[tool_key],
-            "label": format_tool_label(getattr(tool, "tool_name", None)),
+            "label": label,
             "status": "running",
             "eta": "進行中",
+            "stage": "search",  # 工具調用也算在搜尋資料階段
         }
 
     if event_name in {TeamRunEvent.tool_call_completed.value, RunEvent.tool_call_completed.value}:
         tool = getattr(event, "tool", None)
+        tool_name = getattr(tool, "tool_name", None)
         tool_key = getattr(tool, "tool_call_id", None)
         if not tool_key:
-            tool_name = getattr(tool, "tool_name", None) or "tool"
-            tool_key = f"{tool_name}-{getattr(tool, 'created_at', '')}"
+            tool_key = f"{tool_name or 'tool'}-{getattr(tool, 'created_at', '')}"
         routing_state.setdefault(tool_key, tool_key)
+        label = format_tool_label(tool_name)
+        print(f"✅ [路由更新] 工具調用完成: {label}")
         return {
             "id": routing_state[tool_key],
-            "label": format_tool_label(getattr(tool, "tool_name", None)),
+            "label": label,
             "status": "done",
             "eta": "",
         }
@@ -1567,8 +1640,16 @@ async def get_preloaded_documents():
 @app.post("/api/artifacts")
 async def generate_artifacts(req: ArtifactRequest):
     try:
+        import time
+        start_time = time.time()
+        
         last_user = get_last_user_message(req.messages)
+        
+        print(f"⏱️ [計時] 開始路由判斷")
         route = run_router_agent(req.messages, req.documents, req.system_context)
+        route_time = time.time() - start_time
+        print(f"⏱️ [計時] 路由判斷完成，耗時: {route_time:.2f}秒, 結果: {route}")
+        
         if route and route.mode == "simple":
             # Return SSE format if streaming is requested
             if req.stream:
@@ -1711,9 +1792,14 @@ async def generate_artifacts(req: ArtifactRequest):
                     )
 
                     for event in response:
+                        # 處理路由更新 - 即時發送給前端
                         routing_update = build_routing_update(event, routing_state)
                         if routing_update:
-                            if update_routing_log(routing_log, routing_update):
+                            print(f"🔧 [路由建立] 產生更新物件: {routing_update}")
+                            should_send = update_routing_log(routing_log, routing_update)
+                            print(f"🔍 [去重檢查] 是否發送: {should_send}")
+                            if should_send:
+                                print(f"📤 [即時推送] 路由更新: {routing_update}")
                                 yield f"data: {json.dumps({'routing_update': routing_update})}\n\n"
 
                         reasoning_text = extract_reasoning_text(event)
@@ -2065,15 +2151,25 @@ async def delete_news_record(record_id: str):
     刪除指定的新聞記錄
     """
     try:
+        print(f"[INFO] 嘗試刪除記錄: {record_id}")
         success = news_store.delete_record(record_id)
+        print(f"[INFO] 刪除結果: {success}")
+        
         if success:
-            return JSONResponse(content={"success": True, "message": "記錄已刪除"})
-        else:
             return JSONResponse(
-                status_code=404,
-                content={"success": False, "error": "記錄不存在"}
+                status_code=200,
+                content={"success": True, "message": "記錄已刪除"}
+            )
+        else:
+            # 記錄不存在，但這不應該算錯誤（冪等性）
+            return JSONResponse(
+                status_code=200,
+                content={"success": True, "message": "記錄已刪除或不存在"}
             )
     except Exception as e:
+        print(f"[ERROR] 刪除記錄失敗: {e}")
+        import traceback
+        traceback.print_exc()
         return JSONResponse(
             status_code=500,
             content={"success": False, "error": f"刪除記錄失敗: {str(e)}"}
