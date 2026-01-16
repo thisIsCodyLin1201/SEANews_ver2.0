@@ -2197,9 +2197,19 @@ async def delete_news_record(record_id: str):
     刪除指定的新聞記錄
     """
     try:
-        print(f"[INFO] 嘗試刪除記錄: {record_id}")
+        print(f"[DELETE API] 收到刪除請求: {record_id}")
+        print(f"[DELETE API] 資料庫路徑: {news_store.db_path}")
+        
+        # 刪除前先檢查記錄是否存在
+        existing = news_store.get_record_by_id(record_id)
+        print(f"[DELETE API] 刪除前檢查記錄: {existing is not None}")
+        
         success = news_store.delete_record(record_id)
-        print(f"[INFO] 刪除結果: {success}")
+        print(f"[DELETE API] 刪除結果: {success}")
+        
+        # 刪除後再次檢查
+        check_after = news_store.get_record_by_id(record_id)
+        print(f"[DELETE API] 刪除後檢查記錄: {check_after is not None}")
         
         if success:
             return JSONResponse(
