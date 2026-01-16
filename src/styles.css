@@ -424,6 +424,7 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   padding: 4px 0;
+  justify-content: space-between;
 }
 
 .routing-stage {
@@ -432,8 +433,8 @@ body {
   align-items: center;
   gap: 6px;
   position: relative;
-  flex-shrink: 0;
-  padding: 0 8px;
+  flex: 1;
+  padding: 0 4px;
 }
 
 .stage-indicator {
@@ -461,9 +462,10 @@ body {
 
 .stage-connector {
   position: absolute;
-  left: 28px;
-  width: 24px;
+  left: 32px;
+  right: -50%;
   height: 2px;
+  width: 44px;
   transition: all 0.3s ease;
 }
 
@@ -615,28 +617,36 @@ body {
 
 .routing-reasoning {
   display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 6px 10px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
   border-radius: 10px;
   border: 1px dashed rgba(34, 49, 70, 0.15);
   background: rgba(255, 255, 255, 0.75);
   color: var(--ink);
   font-size: 12px;
   line-height: 1.4;
+  margin-top: 0px;
 }
 
 .routing-reasoning-label {
   font-weight: 600;
   color: #2f3a46;
-  white-space: nowrap;
+  font-size: 13px;
+  margin-bottom: 4px;
+  flex-shrink: 0;
 }
 
 .routing-reasoning-text {
   flex: 1;
-  color: var(--muted);
+  color: var(--ink-soft);
   white-space: pre-wrap;
   word-break: break-word;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 90px;
+  overflow-y: auto;
 }
 
 .trace-panel {
@@ -900,6 +910,67 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+/* 推理過程氣泡樣式 */
+.message.is-thinking .message-bubble {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(139, 92, 246, 0.08));
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.1);
+}
+
+.message.is-thinking .message-avatar {
+  background: linear-gradient(135deg, #a855f7, #8b5cf6);
+  animation: thinking-pulse 2s ease-in-out infinite;
+}
+
+@keyframes thinking-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+.reasoning-bubble {
+  max-width: 100%;
+}
+
+.reasoning-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  opacity: 0.9;
+}
+
+.reasoning-content p {
+  margin: 0.5em 0;
+}
+
+.reasoning-content strong {
+  color: #8b5cf6;
+  font-weight: 600;
+}
+
+/* 流式內容打字效果 */
+.message.is-streaming .message-bubble {
+  border: 1px solid rgba(201, 106, 53, 0.2);
+}
+
+.streaming-content {
+  position: relative;
+}
+
+.typing-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  margin-left: 2px;
+  animation: blink 1s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
 }
 
 .attachment-title {

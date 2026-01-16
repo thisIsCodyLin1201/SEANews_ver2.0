@@ -65,7 +65,7 @@ const predefinedStages = [
   { id: 'analyze', label: '需求分析', order: 1 },
   { id: 'search', label: '搜尋資料', order: 2 },
   { id: 'process', label: '處理內容', order: 3 },
-  { id: 'complete', label: '完成', order: 4 },
+  { id: 'complete', label: '任務完成', order: 4 },
 ];
 
 const initialRoutingSteps = [];
@@ -189,6 +189,9 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [streamingContent, setStreamingContent] = useState('');
   const [reasoningSummary, setReasoningSummary] = useState('');
+  
+  // 日誌區域自動滾動
+  const logContainerRef = useRef(null);
 
   // Dynamic metadata states
   const [caseId] = useState(() => generateCaseId());
@@ -215,7 +218,11 @@ export default function App() {
     setLoginError('');
     
     try {
-      const response = await fetch(`${apiBase || ''}/api/auth/login`, {
+      console.log('🔐 [登入] 開始登入流程...');
+      const loginUrl = `${apiBase || ''}/api/auth/login`;
+      console.log('🔐 [登入] 請求 URL:', loginUrl);
+      
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,19 +231,31 @@ export default function App() {
         })
       });
       
+      console.log('🔐 [登入] 收到回應，狀態:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      console.log('🔐 [登入] 回應數據:', { success: data.success, hasToken: !!data.token });
       
       if (data.success && data.token) {
         // 將token存儲到localStorage
         localStorage.setItem('authToken', data.token);
         setIsAuthenticated(true);
+        console.log('🔐 [登入] 登入成功');
       } else {
         setLoginError(data.error || '登入失敗');
         setLoginPassword('');
+        console.log('🔐 [登入] 登入失敗:', data.error);
       }
     } catch (error) {
-      console.error('登入錯誤:', error);
-      setLoginError('連線失敗，請稍後再試');
+      console.error('🔐 [登入錯誤]', error);
+      const errorMsg = error instanceof Error 
+        ? `連線失敗: ${error.message}` 
+        : '連線失敗，請稍後再試';
+      setLoginError(errorMsg);
       setLoginPassword('');
     }
   };
@@ -269,6 +288,13 @@ export default function App() {
 
     verifyStoredToken();
   }, []);
+
+  // 日誌自動滾動到底部
+  useEffect(() => {
+    if (logContainerRef.current && reasoningSummary) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [reasoningSummary]);
 
   // 從數據庫載入新聞記錄
   useEffect(() => {
@@ -988,8 +1014,20 @@ export default function App() {
                 continue;
               }
 
+              // 處理 LLM 處理日誌（替代推理摘要）
+              if (parsed.log_chunk) {
+                setReasoningSummary((prev) => {
+                  const updated = prev + parsed.log_chunk + '\n';
+                  console.log('📋 [處理日誌]', parsed.log_chunk);
+                  return updated;
+                });
+                continue;
+              }
+
+              // 處理完整推理摘要（最終結果）
               if (parsed.reasoning_summary) {
                 setReasoningSummary(parsed.reasoning_summary);
+                console.log('🧠 [推理完成] 收到完整推理摘要');
                 continue;
               }
 
@@ -1744,6 +1782,25 @@ export default function App() {
                   </div>
                 </div>
               ))}
+              
+              {/* 流式內容顯示 */}
+              {isLoading && streamingContent && (
+                <div className="message is-assistant is-streaming">
+                  <div className="message-avatar">AI</div>
+                  <div className="message-bubble">
+                    <div className="message-meta">
+                      <span className="message-name">助理</span>
+                      <span className="message-time">{nowTime()}</span>
+                    </div>
+                    <div className="streaming-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {streamingContent}
+                      </ReactMarkdown>
+                      <span className="typing-cursor">▋</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="routing-panel">
@@ -1782,10 +1839,11 @@ export default function App() {
                 })}
               </div>
               
+              {/* 處理日誌區域（固定高度） */}
               {reasoningSummary ? (
                 <div className="routing-reasoning">
-                  <span className="routing-reasoning-label">Reasoning</span>
-                  <span className="routing-reasoning-text">{reasoningSummary}</span>
+                  
+                  <div className="routing-reasoning-text" ref={logContainerRef}>{reasoningSummary}</div>
                 </div>
               ) : null}
             </div>
