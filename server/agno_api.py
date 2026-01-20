@@ -321,8 +321,8 @@ TRACE_MAX_LEN = int(os.getenv("AGNO_TRACE_MAX_LEN", "2000"))
 TRACE_ARGS_MAX_LEN = int(os.getenv("AGNO_TRACE_ARGS_MAX_LEN", "1000"))
 STORE_EVENTS = os.getenv("AGNO_STORE_EVENTS", "").lower() in {"1", "true", "yes", "on"}
 DEFAULT_REASONING_EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "medium")
-# Org may be unverified for reasoning summary; default to disabled unless explicitly set
-DEFAULT_REASONING_SUMMARY = os.getenv("OPENAI_REASONING_SUMMARY", "").strip()
+# 啟用推理摘要以顯示 LLM 思考過程（GPT-5.2 支持）
+DEFAULT_REASONING_SUMMARY = os.getenv("OPENAI_REASONING_SUMMARY", "auto").strip()
 USE_RESPONSES_MODEL = os.getenv("OPENAI_USE_RESPONSES", "1").lower() in {"1", "true", "yes", "on"}
 
 
@@ -950,8 +950,15 @@ def extract_stream_text(event: Any) -> Optional[str]:
 
 
 def extract_reasoning_text(event: Any) -> Optional[str]:
+    """提取推理過程文本，包括 GPT-5.2 的推理摘要"""
     if event is None:
         return None
+    
+    # 嘗試從事件中提取推理摘要
+    summary_text = getattr(event, "reasoning_summary", None)
+    if summary_text:
+        return truncate_text(summary_text, TRACE_MAX_LEN)
+    
     event_name = getattr(event, "event", "") or ""
     if event_name in {
         TeamRunEvent.reasoning_started.value,
@@ -968,9 +975,18 @@ def extract_reasoning_text(event: Any) -> Optional[str]:
         text = reasoning_content or steps_text
         if text:
             return truncate_text(text, TRACE_MAX_LEN)
-    summary_text = getattr(event, "reasoning_summary", None)
-    if summary_text:
-        return truncate_text(summary_text, TRACE_MAX_LEN)
+    
+    # 檢查是否有 reasoning 相關的輸出項目（Responses API）
+    if hasattr(event, "output") and isinstance(event.output, list):
+        for item in event.output:
+            if isinstance(item, dict) and item.get("type") == "reasoning":
+                summary_items = item.get("summary", [])
+                for summary_item in summary_items:
+                    if isinstance(summary_item, dict) and summary_item.get("type") == "summary_text":
+                        text = summary_item.get("text", "")
+                        if text:
+                            return truncate_text(text, TRACE_MAX_LEN)
+    
     return None
 
 
@@ -999,6 +1015,17 @@ def build_routing_update(event: Any, routing_state: Dict[str, str]) -> Optional[
     
     # 添加詳細日誌以便調試
     print(f"🔍 [路由事件] {event_name}")
+    
+    # 推理事件 → 需求分析階段（思考中）
+    if event_name in {
+        "ReasoningStarted", "TeamReasoningStarted",
+        "ReasoningStep", "TeamReasoningStep",
+        "ReasoningContentDelta", "TeamReasoningContentDelta"
+    }:
+        step_id = "reasoning-thinking"
+        routing_state.setdefault(step_id, step_id)
+        print(f"🧠 [推理更新] LLM 正在思考中...")
+        return {"id": step_id, "label": "AI 思考中", "status": "running", "eta": "分析指示...", "stage": "analyze"}
 
     # TeamRunContent 或 RunContent 事件 → 搜尋資料階段
     if event_name in {"TeamRunContent", "RunContent"}:
@@ -1795,16 +1822,35 @@ async def generate_artifacts(req: ArtifactRequest):
                         # 處理路由更新 - 即時發送給前端
                         routing_update = build_routing_update(event, routing_state)
                         if routing_update:
-                            print(f"🔧 [路由建立] 產生更新物件: {routing_update}")
+                            log_line = f"🔧 [路由建立] 產生更新物件: {routing_update}"
+                            print(log_line)
+                            yield f"data: {json.dumps({'log_chunk': log_line})}\n\n"
+                            
                             should_send = update_routing_log(routing_log, routing_update)
-                            print(f"🔍 [去重檢查] 是否發送: {should_send}")
+                            log_line = f"🔍 [去重檢查] 是否發送: {should_send}"
+                            print(log_line)
+                            yield f"data: {json.dumps({'log_chunk': log_line})}\n\n"
+                            
                             if should_send:
-                                print(f"📤 [即時推送] 路由更新: {routing_update}")
+                                log_line = f"📤 [即時推送] 路由更新: {routing_update}"
+                                print(log_line)
+                                yield f"data: {json.dumps({'log_chunk': log_line})}\n\n"
                                 yield f"data: {json.dumps({'routing_update': routing_update})}\n\n"
 
+                        # 推送事件名稱日誌
+                        event_name = getattr(event, "event", "") or ""
+                        if event_name:
+                            log_line = f"🔍 [路由事件] {event_name}"
+                            print(log_line)
+                            yield f"data: {json.dumps({'log_chunk': log_line})}\n\n"
+
+                        # 提取推理過程（如果有）
                         reasoning_text = extract_reasoning_text(event)
                         if reasoning_text:
                             reasoning_fragments.append(reasoning_text)
+                            log_line = f"🧠 [推理日誌] {reasoning_text[:200]}..."
+                            print(log_line)
+                            yield f"data: {json.dumps({'log_chunk': log_line})}\n\n"
 
                         trace_event = map_event_to_trace_event(event)
                         if trace_event:
@@ -2151,9 +2197,19 @@ async def delete_news_record(record_id: str):
     刪除指定的新聞記錄
     """
     try:
-        print(f"[INFO] 嘗試刪除記錄: {record_id}")
+        print(f"[DELETE API] 收到刪除請求: {record_id}")
+        print(f"[DELETE API] 資料庫路徑: {news_store.db_path}")
+        
+        # 刪除前先檢查記錄是否存在
+        existing = news_store.get_record_by_id(record_id)
+        print(f"[DELETE API] 刪除前檢查記錄: {existing is not None}")
+        
         success = news_store.delete_record(record_id)
-        print(f"[INFO] 刪除結果: {success}")
+        print(f"[DELETE API] 刪除結果: {success}")
+        
+        # 刪除後再次檢查
+        check_after = news_store.get_record_by_id(record_id)
+        print(f"[DELETE API] 刪除後檢查記錄: {check_after is not None}")
         
         if success:
             return JSONResponse(

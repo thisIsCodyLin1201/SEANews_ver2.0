@@ -65,7 +65,7 @@ const predefinedStages = [
   { id: 'analyze', label: '需求分析', order: 1 },
   { id: 'search', label: '搜尋資料', order: 2 },
   { id: 'process', label: '處理內容', order: 3 },
-  { id: 'complete', label: '完成', order: 4 },
+  { id: 'complete', label: '任務完成', order: 4 },
 ];
 
 const initialRoutingSteps = [];
@@ -189,6 +189,9 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [streamingContent, setStreamingContent] = useState('');
   const [reasoningSummary, setReasoningSummary] = useState('');
+  
+  // 日誌區域自動滾動
+  const logContainerRef = useRef(null);
 
   // Dynamic metadata states
   const [caseId] = useState(() => generateCaseId());
@@ -215,7 +218,11 @@ export default function App() {
     setLoginError('');
     
     try {
-      const response = await fetch(`${apiBase || ''}/api/auth/login`, {
+      console.log('🔐 [登入] 開始登入流程...');
+      const loginUrl = `${apiBase || ''}/api/auth/login`;
+      console.log('🔐 [登入] 請求 URL:', loginUrl);
+      
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,19 +231,31 @@ export default function App() {
         })
       });
       
+      console.log('🔐 [登入] 收到回應，狀態:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      console.log('🔐 [登入] 回應數據:', { success: data.success, hasToken: !!data.token });
       
       if (data.success && data.token) {
         // 將token存儲到localStorage
         localStorage.setItem('authToken', data.token);
         setIsAuthenticated(true);
+        console.log('🔐 [登入] 登入成功');
       } else {
         setLoginError(data.error || '登入失敗');
         setLoginPassword('');
+        console.log('🔐 [登入] 登入失敗:', data.error);
       }
     } catch (error) {
-      console.error('登入錯誤:', error);
-      setLoginError('連線失敗，請稍後再試');
+      console.error('🔐 [登入錯誤]', error);
+      const errorMsg = error instanceof Error 
+        ? `連線失敗: ${error.message}` 
+        : '連線失敗，請稍後再試';
+      setLoginError(errorMsg);
       setLoginPassword('');
     }
   };
@@ -270,15 +289,33 @@ export default function App() {
     verifyStoredToken();
   }, []);
 
-  // 從數據庫載入新聞記錄
+  // 日誌自動滾動到底部
   useEffect(() => {
+    if (logContainerRef.current && reasoningSummary) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [reasoningSummary]);
+
+  // 從數據庫載入新聞記錄（僅在登入後執行一次）
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    
     const loadNewsRecords = async () => {
       try {
         const response = await fetch(`${apiBase || ''}/api/news/records`);
         if (response.ok) {
           const data = await response.json();
+          console.log('📰 [載入] 從資料庫載入記錄:', data.documents?.length, '筆');
+          console.log('📰 [載入] 第一筆記錄範例:', data.documents?.[0]);
+          
           if (data.documents && data.documents.length > 0) {
-            setDocuments(data.documents);
+            setDocuments((prev) => {
+              // 去重：只添加前端狀態中不存在的記錄
+              const existingIds = new Set(prev.map(d => d.id));
+              const newDocs = data.documents.filter(doc => !existingIds.has(doc.id));
+              console.log('📰 [載入] 新增文件數:', newDocs.length);
+              return newDocs.length > 0 ? [...newDocs, ...prev] : prev;
+            });
             if (!selectedDocId) {
               setSelectedDocId(data.documents[0]?.id || '');
             }
@@ -289,7 +326,7 @@ export default function App() {
       }
     };
     loadNewsRecords();
-  }, []);
+  }, [isAuthenticated]);
 
   const persistDocTags = async (tagKey, tags) => {
     if (!tagKey) return;
@@ -332,20 +369,30 @@ export default function App() {
         const response = await fetch(`${apiBase || ''}/api/documents/preloaded`);
         if (!response.ok || !isMounted) return;
         const data = await response.json();
-        const pdfDocs = (data.documents || []).map((doc) => ({
-          id: doc.id,
-          name: doc.name,
-          type: doc.type,
-          pages: doc.pages ?? '-',
-          tag_key: doc.tag_key || doc.id,
-          tags: Array.isArray(doc.tags) ? doc.tags : [],
-          content: doc.preview || '',
-          image: '',
-          image_mime: '',
-          status: doc.status,
-          message: doc.message,
-          source: 'preloaded',
-        }));
+        
+        // 獲取已刪除的文件 ID 列表
+        const deletedIds = JSON.parse(localStorage.getItem('deletedDocIds') || '[]');
+        console.log('📄 [預載] 已刪除ID列表:', deletedIds);
+        
+        const pdfDocs = (data.documents || [])
+          .filter(doc => !deletedIds.includes(doc.id))  // 過濾已刪除的文件
+          .map((doc) => ({
+            id: doc.id,
+            name: doc.name,
+            type: doc.type,
+            pages: doc.pages ?? '-',
+            tag_key: doc.tag_key || doc.id,
+            tags: Array.isArray(doc.tags) ? doc.tags : [],
+            content: doc.preview || '',
+            image: '',
+            image_mime: '',
+            status: doc.status,
+            message: doc.message,
+            source: 'preloaded',
+          }));
+        
+        console.log('📄 [預載] 過濾後文件數:', pdfDocs.length);
+        
         if (pdfDocs.length > 0 && isMounted) {
           setDocuments((prev) => {
             // Deduplicate by ID
@@ -516,34 +563,73 @@ export default function App() {
   };
 
   const handleDeleteDoc = async (docId) => {
+    console.log('🗑️ [刪除函數被呼叫] docId:', docId);
+    
     if (!docId) return;
-    const docName = documents.find((doc) => doc.id === docId)?.name || '文件';
-    if (!window.confirm(`確定要刪除「${docName}」嗎？`)) return;
+    const doc = documents.find((d) => d.id === docId);
+    if (!doc) {
+      console.log('🗑️ [刪除] 找不到文件');
+      return;
+    }
+    
+    const docName = doc.name || '文件';
+    console.log('🗑️ [刪除] 準備刪除:', { id: docId, name: docName, source: doc.source, type: doc.type });
+    
+    if (!window.confirm(`確定要刪除「${docName}」嗎？`)) {
+      console.log('🗑️ [刪除] 使用者取消');
+      return;
+    }
 
     try {
-      // 從數據庫刪除
-      const response = await fetch(`${apiBase || ''}/api/news/records/${docId}`, {
-        method: 'DELETE',
+      // 根據來源決定是否需要呼叫後端 API
+      const source = doc.source || 'news';
+      console.log('🗑️ [刪除] 文件來源:', source);
+      
+      if (source === 'news' || source === 'research') {
+        // 新聞記錄：從資料庫刪除
+        console.log('🗑️ [刪除] 呼叫後端 API:', `${apiBase || ''}/api/news/records/${docId}`);
+        const response = await fetch(`${apiBase || ''}/api/news/records/${docId}`, {
+          method: 'DELETE',
+        });
+        
+        console.log('🗑️ [刪除] 後端回應狀態:', response.status, response.ok);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('🗑️ [刪除] 後端錯誤:', errorText);
+          alert('刪除失敗');
+          return;
+        }
+        
+        const result = await response.json();
+        console.log('🗑️ [刪除] 後端回應:', result);
+      } else if (source === 'preloaded' || source === 'uploaded') {
+        // 預載文件和上傳文件：記錄到 localStorage，防止重新載入
+        const deletedIds = JSON.parse(localStorage.getItem('deletedDocIds') || '[]');
+        if (!deletedIds.includes(docId)) {
+          deletedIds.push(docId);
+          localStorage.setItem('deletedDocIds', JSON.stringify(deletedIds));
+          console.log('🗑️ [刪除] 已記錄到 localStorage:', deletedIds.length, '個已刪除ID');
+        }
+      }
+      
+      // 從前端狀態中移除
+      setDocuments((prev) => {
+        const next = prev.filter((d) => d.id !== docId);
+        console.log('🗑️ [刪除] 前端狀態更新，剩餘文件數:', next.length);
+        // Update selection if the current one was removed
+        if (selectedDocId === docId) {
+          setSelectedDocId(next[0]?.id || '');
+        }
+        if (editingDocId === docId) {
+          setEditingDocId('');
+        }
+        return next;
       });
       
-      if (response.ok) {
-        // 從前端狀態中移除
-        setDocuments((prev) => {
-          const next = prev.filter((doc) => doc.id !== docId);
-          // Update selection if the current one was removed
-          if (selectedDocId === docId) {
-            setSelectedDocId(next[0]?.id || '');
-          }
-          if (editingDocId === docId) {
-            setEditingDocId('');
-          }
-          return next;
-        });
-      } else {
-        alert('刪除失敗');
-      }
+      console.log('✅ [刪除] 刪除完成');
     } catch (error) {
-      console.error('刪除記錄失敗:', error);
+      console.error('❌ [刪除] 刪除記錄失敗:', error);
       alert('刪除時發生錯誤');
     }
   };
@@ -811,15 +897,40 @@ export default function App() {
     }
 
     try {
-      // 批量刪除
-      const deletePromises = selectedNewsIds.map(docId =>
-        fetch(`${apiBase || ''}/api/news/records/${docId}`, {
-          method: 'DELETE',
-        })
-      );
+      // 分類文件：哪些需要呼叫 API，哪些只需前端移除
+      const newsRecordIds = selectedDocs
+        .filter(doc => doc.source === 'news' || doc.source === 'research')
+        .map(doc => doc.id);
+      
+      const preloadedIds = selectedDocs
+        .filter(doc => doc.source === 'preloaded' || doc.source === 'uploaded')
+        .map(doc => doc.id);
+      
+      let successCount = selectedNewsIds.length;
+      
+      // 只對新聞記錄呼叫刪除 API
+      if (newsRecordIds.length > 0) {
+        const deletePromises = newsRecordIds.map(docId =>
+          fetch(`${apiBase || ''}/api/news/records/${docId}`, {
+            method: 'DELETE',
+          })
+        );
 
-      const results = await Promise.all(deletePromises);
-      const successCount = results.filter(r => r.ok).length;
+        const results = await Promise.all(deletePromises);
+        const apiSuccessCount = results.filter(r => r.ok).length;
+        
+        if (apiSuccessCount < newsRecordIds.length) {
+          successCount -= (newsRecordIds.length - apiSuccessCount);
+        }
+      }
+      
+      // 預載文件：記錄到 localStorage
+      if (preloadedIds.length > 0) {
+        const deletedIds = JSON.parse(localStorage.getItem('deletedDocIds') || '[]');
+        const updatedIds = [...new Set([...deletedIds, ...preloadedIds])];
+        localStorage.setItem('deletedDocIds', JSON.stringify(updatedIds));
+        console.log('🗑️ [批次刪除] 已記錄', preloadedIds.length, '個預載文件ID');
+      }
 
       // 從前端狀態中移除已刪除的項目
       setDocuments((prev) => {
@@ -988,8 +1099,20 @@ export default function App() {
                 continue;
               }
 
+              // 處理 LLM 處理日誌（替代推理摘要）
+              if (parsed.log_chunk) {
+                setReasoningSummary((prev) => {
+                  const updated = prev + parsed.log_chunk + '\n';
+                  console.log('📋 [處理日誌]', parsed.log_chunk);
+                  return updated;
+                });
+                continue;
+              }
+
+              // 處理完整推理摘要（最終結果）
               if (parsed.reasoning_summary) {
                 setReasoningSummary(parsed.reasoning_summary);
+                console.log('🧠 [推理完成] 收到完整推理摘要');
                 continue;
               }
 
@@ -1369,7 +1492,7 @@ export default function App() {
                       onClick={handleOpenBatchExport}
                       disabled={selectedNewsIds.length === 0}
                     >
-                      匯出已勾選 ({selectedNewsIds.length})
+                      批量匯出 ({selectedNewsIds.length})
                     </Button>
                     <Button
                       size="small"
@@ -1378,7 +1501,7 @@ export default function App() {
                       disabled={selectedNewsIds.length === 0}
                       style={{ color: '#ff4d4f', borderColor: '#ff4d4f' }}
                     >
-                      刪除已勾選 ({selectedNewsIds.length})
+                      批量刪除 ({selectedNewsIds.length})
                     </Button>
                   </>
                 )}
@@ -1744,6 +1867,25 @@ export default function App() {
                   </div>
                 </div>
               ))}
+              
+              {/* 流式內容顯示 */}
+              {isLoading && streamingContent && (
+                <div className="message is-assistant is-streaming">
+                  <div className="message-avatar">AI</div>
+                  <div className="message-bubble">
+                    <div className="message-meta">
+                      <span className="message-name">助理</span>
+                      <span className="message-time">{nowTime()}</span>
+                    </div>
+                    <div className="streaming-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {streamingContent}
+                      </ReactMarkdown>
+                      <span className="typing-cursor">▋</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="routing-panel">
@@ -1782,10 +1924,11 @@ export default function App() {
                 })}
               </div>
               
+              {/* 處理日誌區域（固定高度） */}
               {reasoningSummary ? (
                 <div className="routing-reasoning">
-                  <span className="routing-reasoning-label">Reasoning</span>
-                  <span className="routing-reasoning-text">{reasoningSummary}</span>
+                  
+                  <div className="routing-reasoning-text" ref={logContainerRef}>{reasoningSummary}</div>
                 </div>
               ) : null}
             </div>
