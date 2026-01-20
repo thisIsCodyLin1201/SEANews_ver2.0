@@ -18,6 +18,12 @@ class NewsStore:
             db_path: 資料庫檔案路徑
         """
         self.db_path = Path(__file__).parent / db_path
+        
+        # 每次啟動時清空資料庫
+        if self.db_path.exists():
+            self.db_path.unlink()
+            print(f"[清空] 已刪除舊資料庫: {self.db_path}")
+        
         self._init_database()
     
     def _init_database(self):

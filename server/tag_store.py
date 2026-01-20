@@ -5,6 +5,11 @@ from typing import Any, Dict, List
 
 STORE_PATH = Path(__file__).resolve().parent / "tag_store.json"
 
+# 每次啟動時清空標籤儲存
+if STORE_PATH.exists():
+    STORE_PATH.unlink()
+    print(f"[清空] 已刪除標籤儲存: {STORE_PATH}")
+
 
 def _load_store() -> Dict[str, Any]:
     if not STORE_PATH.exists():
