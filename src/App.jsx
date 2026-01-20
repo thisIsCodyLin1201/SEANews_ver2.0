@@ -243,6 +243,20 @@ export default function App() {
       if (data.success && data.token) {
         // 將token存儲到localStorage
         localStorage.setItem('authToken', data.token);
+        
+        // 清空前端所有狀態（確保登入後是乾淨的）
+        console.log('🗑️ [登入] 清空前端狀態...');
+        setDocuments([]);
+        setMessages([]);
+        setArtifacts({
+          summaries: [],
+          translations: [],
+          memo: { output: '', sections: [], recommendation: '', conditions: '' },
+        });
+        setRoutingSteps([]);
+        setSelectedDocId('');
+        console.log('✅ [登入] 前端狀態已清空');
+        
         setIsAuthenticated(true);
         console.log('🔐 [登入] 登入成功');
       } else {
