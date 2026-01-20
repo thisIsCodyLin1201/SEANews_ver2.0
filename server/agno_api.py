@@ -1521,6 +1521,20 @@ async def verify_token(request: VerifyTokenRequest):
         return {"valid": False}
 
 
+@app.post("/api/auth/clear-data")
+async def clear_user_data():
+    """清空所有用戶資料（用於登入時）"""
+    try:
+        print("[API] 清空所有用戶資料...")
+        news_store.clear_all_records()
+        clear_all_tags()
+        print("[API] 資料清空完成")
+        return {"success": True}
+    except Exception as e:
+        print(f"清空資料錯誤: {e}")
+        return {"success": False, "error": str(e)}
+
+
 @app.get("/api/health")
 async def health():
     return {"ok": True}
