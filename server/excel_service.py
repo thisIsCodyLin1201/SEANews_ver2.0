@@ -345,8 +345,7 @@ def generate_news_excel(
             }
         
         # 從數據庫記錄獲取國家（不再重複調用 LLM）
-        from news_store import NewsStore
-        news_store = NewsStore()
+        from news_store import news_store
         country = ""  # 默認值改為空字符串
         
         # 嘗試通過文件名查詢數據庫獲取國家

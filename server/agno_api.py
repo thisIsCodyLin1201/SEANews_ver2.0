@@ -27,7 +27,7 @@ from agno.models.openai.responses import OpenAIResponses
 
 # Lazy import for RagStore to avoid startup failures
 # from rag_store import RagStore
-from tag_store import get_doc_tags, load_tag_store, set_custom_tags, set_doc_tags
+from tag_store import get_doc_tags, load_tag_store, set_custom_tags, set_doc_tags, clear_all_tags
 from email_service import send_email_with_attachment, generate_news_report_html
 from excel_service import (
     generate_news_excel, 
@@ -1478,6 +1478,12 @@ async def login(request: LoginRequest):
         
         # 验证用户名和密码
         if request.username == valid_username and request.password == valid_password:
+            # 清空所有資料（單用戶模式：每次登入都是乾淨狀態）
+            print("[登入] 清空所有資料...")
+            news_store.clear_all_records()
+            clear_all_tags()
+            print("[登入] 資料清空完成")
+            
             # 生成会话令牌
             token = create_session_token()
             active_sessions[token] = datetime.now() + SESSION_TIMEOUT
