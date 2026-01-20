@@ -260,33 +260,16 @@ export default function App() {
     }
   };
 
-  // 自動驗證已存在的token
+  // 自動驗證已存在的token（已停用 - 改為每次都需重新登入以確保資料乾淨）
   useEffect(() => {
-    const verifyStoredToken = async () => {
-      const token = localStorage.getItem('authToken');
-      if (!token) return;
-
-      try {
-        const response = await fetch(`${apiBase || ''}/api/auth/verify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token })
-        });
-        
-        const data = await response.json();
-        if (data.valid) {
-          setIsAuthenticated(true);
-        } else {
-          // Token無效，清除
-          localStorage.removeItem('authToken');
-        }
-      } catch (error) {
-        console.warn('Token驗證失敗:', error);
-        localStorage.removeItem('authToken');
-      }
-    };
-
-    verifyStoredToken();
+    // 每次頁面載入時清除舊 token，強制重新登入
+    // 這樣可以確保每次開啟頁面都是乾淨的狀態
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      console.log('🔄 [初始化] 清除舊 token，需要重新登入');
+      localStorage.removeItem('authToken');
+      setIsAuthenticated(false);
+    }
   }, []);
 
   // 日誌自動滾動到底部
@@ -302,6 +285,14 @@ export default function App() {
     
     const loadNewsRecords = async () => {
       try {
+        // 每次頁面載入時先清空所有資料（確保乾淨狀態）
+        console.log('🗑️ [清空] 清空舊資料...');
+        await fetch(`${apiBase || ''}/api/auth/clear-data`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        console.log('✅ [清空] 資料已清空');
+        
         const response = await fetch(`${apiBase || ''}/api/news/records`);
         if (response.ok) {
           const data = await response.json();
