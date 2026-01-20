@@ -10,6 +10,9 @@ from typing import List, Dict, Any, Optional
 
 
 class NewsStore:
+    # 類別變數：追蹤是否已經初始化過（避免重複清空）
+    _initialized = False
+    
     def __init__(self, db_path: str = "news_records.db"):
         """
         初始化新聞資料庫
@@ -19,10 +22,12 @@ class NewsStore:
         """
         self.db_path = Path(__file__).parent / db_path
         
-        # 每次啟動時清空資料庫
-        if self.db_path.exists():
-            self.db_path.unlink()
-            print(f"[清空] 已刪除舊資料庫: {self.db_path}")
+        # 只在第一次初始化時清空資料庫（伺服器啟動時）
+        if not NewsStore._initialized:
+            if self.db_path.exists():
+                self.db_path.unlink()
+                print(f"[清空] 已刪除舊資料庫: {self.db_path}")
+            NewsStore._initialized = True
         
         self._init_database()
     
