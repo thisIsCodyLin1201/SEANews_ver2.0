@@ -949,10 +949,6 @@ export default function App() {
 
       setSelectedNewsIds([]);
       alert(`✅ 已成功刪除 ${successCount} 筆新聞`);
-
-      if (successCount < selectedNewsIds.length) {
-        setErrorMessage(`部分刪除失敗：${selectedNewsIds.length - successCount} 筆`);
-      }
     } catch (error) {
       console.error('批量刪除錯誤:', error);
       alert('批量刪除時發生錯誤，請稍後再試');
