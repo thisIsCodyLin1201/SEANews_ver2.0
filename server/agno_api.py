@@ -122,6 +122,7 @@ TEAM_INSTRUCTIONS = [
     "【JSON 格式要求】",
     "- 回覆必須是嚴格 JSON，不可輸出 Markdown code fence 或多餘說明",
     "- summary.output 與 memo.output 用繁體中文",
+    "- summary.output 中不要使用國家名稱（如 ##越南、##泰國、##Vietnam 等）作為標題，直接描述內容即可",
     "- translation.output 與 translation.clauses[].translated 用英文",
     "- summary.source_doc_id 與 translation.source_doc_id 必須填入來源文件的 id（見文件清單中的 id）",
     "- 若來源為多份文件，可使用 summary.source_doc_ids / translation.source_doc_ids 陣列",
