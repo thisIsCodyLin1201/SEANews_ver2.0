@@ -668,7 +668,9 @@ def build_research_document(
     if assistant_content:
         content_parts.append(f"## 回覆重點\n{assistant_content}")
     if summary_output:
-        content_parts.append(f"## 摘要\n{summary_output}")
+        # 移除摘要中的國家名稱標題（如 ##菲律賓、##越南 等）
+        cleaned_summary = re.sub(r'##\s*(越南|泰國|印尼|菲律賓|柬埔寨|新加坡|馬來西亞|緬甸|寮國|東南亞)\s*\n*', '', summary_output)
+        content_parts.append(f"## 摘要\n{cleaned_summary}")
     if memo_output:
         content_parts.append(f"## Credit Memo\n{memo_output}")
     if translation_output:
